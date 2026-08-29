@@ -63,16 +63,27 @@ jobs:
     name: Chromium sandbox integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
-      options: --user 1001:1001 --ipc=host
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npx vitest run test/playwright/integration.test.ts
+      - name: Download the Playwright seccomp profile
         env:
-          LLM_FETCH_PLAYWRIGHT_INTEGRATION: "1"
+          PLAYWRIGHT_SECCOMP_SHA256: cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849
+          PLAYWRIGHT_SECCOMP_URL: https://raw.githubusercontent.com/microsoft/playwright/26a9e470a7b3c7822084b09fb7f13902c5f37b51/utils/docker/seccomp_profile.json
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/playwright-seccomp.json" \
+            "$PLAYWRIGHT_SECCOMP_URL"
+          echo "$PLAYWRIGHT_SECCOMP_SHA256  $RUNNER_TEMP/playwright-seccomp.json" \
+            | sha256sum --check
+      - name: Run Chromium with its process sandbox
+        run: |
+          docker run --rm --init --ipc=host \
+            --user 1001:1001 \
+            --security-opt "seccomp=$RUNNER_TEMP/playwright-seccomp.json" \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work \
+            --env HOME=/tmp \
+            --env LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 \
+            mcr.microsoft.com/playwright:v1.62.1-noble \
+            /bin/bash -lc \
+            'npm ci && npx vitest run test/playwright/integration.test.ts'

@@ -4,12 +4,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Verify the release without publishing
-        required: true
-        default: true
-        type: boolean
 
 concurrency:
   group: npm-publish
@@ -28,7 +22,9 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
+          package-manager-cache: false
+      - name: Require a Trusted Publishing-compatible npm
+        run: node -e "const [M,m]=require('node:child_process').execFileSync('npm',['--version'],{encoding:'utf8'}).trim().split('.').map(Number);if(M<11||(M===11&&m<5))throw new Error('npm 11.5.1 or newer is required')"
       - run: npm ci
       - run: npm run verify
       - run: npm run bench:ci
@@ -41,7 +37,7 @@ jobs:
       - run: npm pack --dry-run --json
 
   publish:
-    if: github.event_name == 'release' || inputs.dry_run == false
+    if: github.event_name == 'release' && github.event.action == 'published'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -55,10 +51,11 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
+          package-manager-cache: false
+      - name: Require a Trusted Publishing-compatible npm
+        run: node -e "const [M,m]=require('node:child_process').execFileSync('npm',['--version'],{encoding:'utf8'}).trim().split('.').map(Number);if(M<11||(M===11&&m<5))throw new Error('npm 11.5.1 or newer is required')"
       - run: npm ci
       - run: node scripts/verify-release-tag.mjs "$RELEASE_TAG"
-        if: github.event_name == 'release'
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Require an explicitly publishable manifest

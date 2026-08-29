@@ -7,7 +7,10 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const projectRoot = resolve(import.meta.dirname, "..");
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "llm-fetch-package-"));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCli = process.env.npm_execpath;
+if (typeof npmCli !== "string" || !npmCli) {
+  throw new Error("npm_execpath is required; run this check through npm.");
+}
 const packageManifest = JSON.parse(
   await readFile(join(projectRoot, "package.json"), "utf8"),
 );
@@ -24,8 +27,12 @@ async function run(command, arguments_, cwd = projectRoot) {
   });
 }
 
+async function runNpm(arguments_, cwd = projectRoot) {
+  return run(process.execPath, [npmCli, ...arguments_], cwd);
+}
+
 try {
-  const packed = await run(npmCommand, [
+  const packed = await runNpm([
     "pack",
     "--json",
     "--pack-destination",
@@ -67,8 +74,7 @@ try {
     join(temporaryDirectory, "package.json"),
     JSON.stringify({ private: true, type: "module" }),
   );
-  await run(
-    npmCommand,
+  await runNpm(
     ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
     temporaryDirectory,
   );
