@@ -42,6 +42,25 @@ try {
     temporaryDirectory,
   );
 
+  const installedPackageRoot = join(
+    temporaryDirectory,
+    "node_modules",
+    "@scope",
+    "llm-fetch",
+  );
+  const installedPackage = JSON.parse(
+    await readFile(join(installedPackageRoot, "package.json"), "utf8"),
+  );
+  if (installedPackage.license !== "MIT") {
+    throw new Error("The packed package does not declare the MIT license.");
+  }
+  await Promise.all([
+    access(join(installedPackageRoot, "LICENSE")),
+    access(join(installedPackageRoot, "NOTICE")),
+    access(join(installedPackageRoot, "README.md")),
+    access(join(installedPackageRoot, "README.ja.md")),
+  ]);
+
   try {
     await access(join(temporaryDirectory, "node_modules", "playwright-core"));
     throw new Error(

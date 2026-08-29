@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Fast, safe web search and content retrieval for LLM applications",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -12,6 +12,7 @@
   "files": [
     "dist",
     "README.md",
+    "README.ja.md",
     "LICENSE",
     "NOTICE",
     "SECURITY.md"

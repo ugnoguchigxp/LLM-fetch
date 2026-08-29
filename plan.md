@@ -13,7 +13,7 @@
 - Playwright: コアから分離した任意subpathでのみ使用し、HTTP-firstを維持する
 - コンテキスト防御: 外部コンテンツを常に未信頼・taintedとして隔離
 - Prompt Injection検査: 純TypeScriptの内蔵Context Guardを標準有効化
-- パッケージライセンス: Apache-2.0を第一候補とする
+- パッケージライセンス: MIT
 
 SearXNGはAGPL-3.0のため採用しない。DuckDuckGoは公式の安定したWeb検索APIではないため、通常検索ページが発行する署名付きpreloadを主経路、公式に案内されているHTML/Lite版を代替経路とするbest-effort Providerとして扱う。
 
@@ -930,7 +930,7 @@ npm install @scope/llm-fetch @playwright/browser-chromium
 
 ## 14. ライセンスと利用条件
 
-- `llm-fetch`: Apache-2.0を第一候補
+- `llm-fetch`: MIT
 - Cheerio: MIT
 - SearXNG: 使用しない
 - Puppeteer: 使用しない

@@ -1,10 +1,20 @@
 # llm-fetch
 
-Fast, dependency-light web search and safe content retrieval for Node.js LLM applications.
+[日本語](./README.ja.md)
 
-The package is implemented in TypeScript, requires Node.js 22 or later, and enables its built-in Context Guard by default. The core package does not require Python, Docker, a browser, SearXNG, Prompt Shield, or WebAssembly. Playwright/Chromium support is an optional dynamic-page extension.
+`llm-fetch` adds web search and readable-page retrieval to Node.js LLM applications. It treats search results and fetched pages as untrusted input and runs a built-in prompt-injection guard before content reaches a model-facing tool response.
 
-> The package name uses the temporary `@scope` placeholder and is marked `private` to prevent an accidental release. Replace the scope and remove `private` before the first npm publish.
+The core package is written in TypeScript and does not require Python, Docker, SearXNG, a browser, or a long-running sidecar. Static pages use the HTTP path. Playwright support is optional and is used only when a page needs JavaScript to produce readable content.
+
+> [!NOTE]
+> This repository is being prepared for publication. `@scope/llm-fetch` is a placeholder package name, and `private: true` prevents accidental npm publication. Choose the final scope and remove `private` before publishing.
+
+## Requirements
+
+- Node.js 22 or later
+- ESM or CommonJS
+
+Cheerio is the only direct runtime dependency of the core package. OpenAI SDKs, AWS SDKs, Playwright, and browser binaries are not installed with the core package.
 
 ## Install
 
@@ -12,7 +22,7 @@ The package is implemented in TypeScript, requires Node.js 22 or later, and enab
 npm install @scope/llm-fetch
 ```
 
-## DuckDuckGo
+## Quick start
 
 ```ts
 import { createLlmFetch, duckDuckGo } from "@scope/llm-fetch";
@@ -21,25 +31,53 @@ const web = createLlmFetch({
   search: duckDuckGo(),
 });
 
-const result = await web.searchAndRead({
-  query: "TypeScript web retrieval",
-  limit: 5,
-});
+try {
+  const result = await web.searchAndRead({
+    query: "TypeScript web retrieval",
+    limit: 5,
+  });
 
-for (const document of result.documents) {
-  console.log(document.title, document.finalUrl);
-  console.log(document.security);
-  console.log(document.text);
+  for (const document of result.documents) {
+    console.log(document.title, document.finalUrl);
+    console.log(document.text);
+    console.log(document.security.decision);
+  }
+} finally {
+  await web.close();
 }
 ```
 
-DuckDuckGo first uses the regular search bootstrap and its provider-signed `links.duckduckgo.com/d.js` preload. The preload URL, host, path, query, and VQD token are validated, and the result array is parsed as data without evaluating the returned JavaScript. If that route has a retryable challenge, transport failure, or parser change, the provider falls back to DuckDuckGo's documented non-JavaScript HTML and Lite representations.
+`searchAndRead()` fetches successful search hits concurrently. A page-level failure is added to `failures` without discarding the other documents. A search-provider failure rejects the operation.
 
-All three representations are best-effort web interfaces rather than a stable application API. They may change or return rate limits and bot challenges; after the bounded fallback sequence, such responses are returned as typed errors rather than empty results. This implementation does not depend on SearXNG or include AGPL code.
+| API | Purpose |
+| --- | --- |
+| `search()` | Return normalized search hits |
+| `read()` | Fetch and extract one URL |
+| `searchAndRead()` | Search and retrieve result pages in one call |
+| `toolset()` | Create OpenAI / Bedrock tool definitions and executors |
+| `close()` | Clear caches and stop optional browser/proxy resources |
 
-Search queries are bounded to 400 characters across providers. Brave `timeRange` values are mapped to its freshness filters, while `locale` is passed as `search_lang`. The client bounds the entire configured search chain to 10 seconds by default; use `searchTimeoutMs` to change it. Provider-specific deadlines remain shorter by default. DuckDuckGo challenges and DuckDuckGo/Brave rate limits also start an in-memory cooldown so repeated calls do not immediately repeat the blocked request.
+## Search providers
 
-## DuckDuckGo with Brave fallback
+### DuckDuckGo
+
+DuckDuckGo does not require an API key.
+
+```ts
+const web = createLlmFetch({
+  search: duckDuckGo(),
+});
+```
+
+The normal path loads the DuckDuckGo search bootstrap and follows its VQD-bound `links.duckduckgo.com/d.js` preload. The provider validates the preload host, path, query, and VQD token. It parses the result array as data and never evaluates the returned JavaScript.
+
+If that path fails with a retryable challenge, transport error, or response-format change, the provider tries DuckDuckGo's HTML and Lite representations. These are best-effort web interfaces, not a stable application API. Layout changes, rate limits, and bot challenges can still occur. The provider returns typed errors for those cases instead of reporting an empty result set.
+
+The implementation does not use SearXNG or include AGPL code. It does not solve CAPTCHAs or rotate proxies.
+
+### Brave fallback
+
+Use `fallbackSearch()` when Brave Search should run only after a retryable DuckDuckGo failure.
 
 ```ts
 import {
@@ -57,7 +95,11 @@ const web = createLlmFetch({
 });
 ```
 
-Fallback occurs only after a typed retryable error. An empty result or invalid input does not trigger the next provider.
+An empty result set and invalid input do not advance to the next provider. For Brave, `timeRange` maps to its freshness filter and `locale` maps to `search_lang`.
+
+Search queries are limited to 400 characters. The default deadline for the complete provider chain is 10 seconds and can be changed with `searchTimeoutMs`. DuckDuckGo challenges and DuckDuckGo / Brave rate limits start an in-memory cooldown so repeated calls do not immediately repeat a blocked request.
+
+Use `custom()` to register another implementation of `SearchProvider`.
 
 ## Read one URL
 
@@ -69,17 +111,19 @@ const document = await web.read({
 });
 ```
 
-Only public HTTP/HTTPS destinations on their standard ports are allowed. DNS results are validated and pinned for the connection, every redirect is revalidated, and compressed and decoded bodies have separate limits.
+The built-in HTTP transport accepts only public HTTP/HTTPS destinations on their standard ports. It validates DNS results, pins the selected address for the connection, and revalidates every redirect. Compressed and decoded bodies have separate size limits.
 
-## Optional dynamic pages with Playwright
+`read()` can return up to 100,000 characters for trusted application code. For model context, use the smaller output provided by `toolset()`.
 
-Install the optional Chromium helper when browser-rendered pages are needed. It downloads the matching browser during installation; core-only users should not install it.
+## Optional Playwright support
+
+Install a browser runtime only when client-rendered pages are needed.
 
 ```sh
 npm install @scope/llm-fetch @playwright/browser-chromium
 ```
 
-Alternatively, manage the browser binary explicitly:
+To manage the browser binary separately:
 
 ```sh
 npm install @scope/llm-fetch playwright-core
@@ -104,17 +148,15 @@ const document = await web.read({
 });
 ```
 
-`auto` always tries the fast HTTP path first. Chromium is launched only when the static response is a likely client-rendered shell or fails the readable-content quality threshold. If `playwright-core` or its Chromium binary is absent, `auto` does not switch and preserves the original `CONTENT_INSUFFICIENT` result. `always` is an explicit programmatic mode and reports `CONFIG_MISSING` when the optional runtime is unavailable.
+`render: "auto"` always tries HTTP first. It switches to Chromium only when the static response does not contain enough readable content and both `playwright-core` and a compatible browser binary are available. If either dependency is missing, the original `CONTENT_INSUFFICIENT` error is preserved. `render: "always"` explicitly requires the browser runtime and returns `CONFIG_MISSING` when it is unavailable.
 
-HTTP retrieval, browser queueing, navigation, DOM settling, extraction, and guards share one 15-second `read` deadline. Configure `readTimeoutMs` on `createLlmFetch` when a different bound is required; a browser fallback does not reset the timer.
+HTTP retrieval, browser queueing, navigation, extraction, and guards share one 15-second `read` deadline by default. Switching to the browser does not reset that deadline. Set `readTimeoutMs` to use another limit.
 
-The browser process is reused, but each retrieval uses a new non-persistent BrowserContext. The extension blocks non-GET requests, subframes, popups, downloads, WebSockets, Service Workers, private network destinations, and unnecessary image/media/font resources. The rendered DOM is inspected in a Chromium isolated world so page scripts cannot replace the DOM APIs used by the visibility check. Rendered HTML is passed through the same Context Guard, including computed-hidden content. The LLM `fetch_content` tool does not expose the `render` option.
+The browser process is reused, but every retrieval gets a new non-persistent BrowserContext. The default policy blocks non-GET requests, subframes, popups, downloads, WebSockets, Service Workers, private-network destinations, and unnecessary image, media, and font requests. Rendered-page visibility checks run in an isolated world, and computed-hidden content is included in the guard scan.
 
-Chromium's process sandbox is enabled by default. `externalSandbox: true` delegates that isolation to the deployment environment and should be used only inside an independently enforced container or sandbox.
+Chromium's process sandbox is enabled by default. Use `externalSandbox: true` only when another container or sandbox provides equivalent isolation. Browser routing and the built-in DNS-pinning proxy are defense in depth, not an operating-system network sandbox. Add container or egress isolation when the host can reach sensitive networks.
 
-Browser routing and the built-in DNS-pinning proxy are defense in depth, not an operating-system network sandbox. Deploy browser mode with container or egress isolation when the host can reach sensitive networks.
-
-## LLM tool definitions
+## Model-facing tools
 
 ```ts
 const toolset = web.toolset();
@@ -128,28 +170,19 @@ const output = await toolset.execute("web_search", {
 });
 ```
 
-OpenAI and AWS SDKs are not runtime dependencies. Search snippets that contain high-severity injection patterns are withheld from the tool output. Retrieved documents that require approval or are denied are returned as `GUARD_DENIED` errors instead of content.
+OpenAI and AWS SDKs are not runtime dependencies. Tool definitions are plain JSON objects.
 
-The toolset is intentionally smaller than the lower-level SDK result. `web_search` defaults to five results and caps each title and snippet. `fetch_content` defaults to 5,000 visible characters, has a model-facing maximum of 20,000, and returns only the final citation URL, readable text, retrieval time, and truncation flag. Its output never contains the page title, HTML structure, scripts, styles, control attributes, hidden content, raw response metadata, or verbose guard findings. Security metadata is reduced to the trust marker, decision, and unique actionable warning categories. Use `read()` when trusted application code needs the title, up to 100,000 characters, or the full provenance and diagnostic envelope.
+`web_search` returns five results by default and bounds every external title and snippet. Results with high-severity injection patterns are withheld. `fetch_content` returns 5,000 visible characters by default and has a model-facing maximum of 20,000. Its output contains the citation URL, readable text, retrieval time, truncation state, and compact security metadata. It does not expose page HTML, scripts, styles, event attributes, hidden content, raw response metadata, or verbose guard diagnostics.
 
-The lower-level `search()` API and the `hits` array in `searchAndRead()` are normalized transport data, but their titles and snippets still originate outside the application. Treat them as untrusted and do not concatenate them into model instructions. Use the toolset path when search results are going directly to an LLM because it adds guard decisions and withholds high-risk hits.
+Titles and snippets returned by the lower-level `search()` API are still untrusted external data. Do not concatenate them into system instructions. Prefer `toolset()` when search output will be sent to a model.
 
 ## Context Guard
 
-Every retrieved document is marked `trust: "untrusted"` and `tainted: true`, including documents with no findings.
+Every retrieved document is marked `trust: "untrusted"` and `tainted: true`, including documents with no findings. The built-in guard cannot be disabled.
 
-The built-in guard:
+The guard separates visible text, hidden content, comments, metadata, templates, and low-trust attributes. It performs bounded normalization of Unicode, zero-width characters, URL/hex escapes, Base64, delimiter splitting, and leetspeak. It then checks for instruction overrides, role redefinition, secret exfiltration, tool invocation, external sending, memory or policy changes, source suppression, and output control.
 
-- separates visible text, hidden text, comments, metadata, templates, and low-trust attributes;
-- removes statically hidden content from LLM-visible text;
-- scans bounded Unicode, zero-width, URL/hex escape, Base64, delimiter, and leetspeak variants;
-- detects instruction override, role redefinition, secret disclosure, tool execution, external sending, memory writes, policy changes, source suppression, and output control;
-- applies the requested use when deciding whether to allow, warn, require approval, or deny;
-- never returns raw HTML in a document or tool result.
-
-The guard is defense in depth, not a proof of safety. Core HTTP mode does not evaluate external stylesheets or computed CSS; optional browser mode performs bounded computed-visibility checks, but heuristic rules still cannot identify every semantic attack. Applications must keep write tools, code execution, external sending, memory updates, and policy changes behind a separate application-level authorization gate.
-
-Strict mode raises selected medium-severity findings:
+Use the strict profile when selected medium-severity findings should be raised:
 
 ```ts
 const web = createLlmFetch({
@@ -158,14 +191,13 @@ const web = createLlmFetch({
 });
 ```
 
-An additional organization-specific guard can be supplied. It cannot replace the built-in guard; the stricter decision wins.
-Additional guards have a five-second deadline by default; configure `additionalGuardTimeoutMs` when a local guard needs a different bound. Returned findings, reasons, limitations, and individual strings are size-bounded and validated before they are merged.
+An organization-specific `ContentGuard` can be added but cannot replace the built-in guard. The stricter decision wins. Additional guards have a five-second deadline by default, configurable through `additionalGuardTimeoutMs`. Their returned strings, findings, and reasons are also size-bounded.
 
-`fetcher` is an advanced testing/integration override. Supplying one replaces the built-in SSRF-safe HTTP transport, so production overrides must enforce equivalent URL, DNS, redirect, size, content-type, and timeout controls.
+Context Guard is not proof that fetched text is safe. Core HTTP mode cannot evaluate visibility from external stylesheets, and browser mode cannot understand every semantic attack. Keep write tools, code execution, external sending, memory updates, and policy changes behind a separate application-level authorization step.
 
-Custom search providers, retrievers, fetchers, and guards must honor the supplied `AbortSignal`. The client bounds how long it waits even when an override ignores cancellation, but it cannot stop work or side effects inside a non-cooperative implementation.
+`fetcher` is an advanced testing/integration override. It replaces the SSRF-safe built-in HTTP transport. A production override must enforce equivalent destination, DNS, redirect, body-size, content-type, and timeout checks. Custom providers, retrievers, fetchers, and guards must honor the supplied `AbortSignal`.
 
-## Errors
+## Error handling
 
 ```ts
 import { LlmFetchError } from "@scope/llm-fetch";
@@ -179,13 +211,9 @@ try {
 }
 ```
 
-Built-in providers and transport do not place fetched HTML, search response bodies, cookies, or API keys in error messages. Custom providers, guards, and fetcher overrides must preserve the same rule.
+Built-in providers and transports do not include fetched HTML, search response bodies, cookies, or API keys in error messages. Custom implementations should preserve the same rule.
 
-Call and await `web.close()` to clear caches and stop an optional browser/proxy when the client is no longer needed. Closing is idempotent; after it begins, the client is permanently closed and new operations reject with `CONFIG_MISSING`.
-
-```ts
-await web.close();
-```
+`close()` is idempotent. Once closing begins, the client cannot be reused and new operations return `CONFIG_MISSING`.
 
 ## Development
 
@@ -193,11 +221,17 @@ await web.close();
 npm install
 npm run verify
 npm pack --dry-run
-
-# Optional installed-Chromium integration test
-LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 npx vitest run test/playwright/integration.test.ts
 ```
+
+Run the installed-Chromium integration test explicitly:
+
+```sh
+LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 \
+  npx vitest run test/playwright/integration.test.ts
+```
+
+`npm run verify` runs linting, type checks, unit/security tests, production-license checks, ESM/CommonJS/type validation, and a core-only install test.
 
 ## License
 
-Apache-2.0. DuckDuckGo and Brave are external services with their own terms and availability constraints.
+`llm-fetch` is available under the [MIT License](./LICENSE). DuckDuckGo, Brave, Playwright, Chromium, and other external services or dependencies have their own terms and licenses.
