@@ -1,13 +1,10 @@
 # llm-fetch
 
-[English](./README.md)
+[npmパッケージ](https://www.npmjs.com/package/llm-fetch) · [English](./README.md)
 
 `llm-fetch`は、LLMを使うNode.jsアプリにWeb検索とページ本文の取得を追加するTypeScript製ライブラリです。検索結果や取得ページを外部から届く未信頼データとして扱い、モデル向けのツール出力を作る前にプロンプトインジェクションを検査します。
 
 Python、Docker、SearXNG、常駐サービスは不要です。通常のページはHTTPで取得し、JavaScriptで本文を生成するページだけ、任意でPlaywrightへ切り替えられます。
-
-> [!NOTE]
-> 最終パッケージ名は`llm-fetch`です。未完成のcheckoutを誤公開しないよう、明示承認を受けたrelease commitまでは`private: true`を維持します。
 
 ## 動作環境
 

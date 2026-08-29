@@ -1,13 +1,10 @@
 # llm-fetch
 
-[日本語](./README.ja.md)
+[npm package](https://www.npmjs.com/package/llm-fetch) · [日本語](./README.ja.md)
 
 `llm-fetch` adds web search and readable-page retrieval to Node.js LLM applications. It treats search results and fetched pages as untrusted input and runs a built-in prompt-injection guard before content reaches a model-facing tool response.
 
 The core package is written in TypeScript and does not require Python, Docker, SearXNG, a browser, or a long-running sidecar. Static pages use the HTTP path. Playwright support is optional and is used only when a page needs JavaScript to produce readable content.
-
-> [!NOTE]
-> `llm-fetch` is the final package name. The source manifest remains `private: true` until the separately approved release commit so an unfinished checkout cannot be published accidentally.
 
 ## Requirements
 
