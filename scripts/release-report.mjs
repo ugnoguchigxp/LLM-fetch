@@ -92,16 +92,20 @@ for (const provider of ["duckduckgo", "brave"]) {
         "utf8",
       ),
     );
-    if (
+    const matchesCommit =
       canary.provider === provider &&
-      Number.isInteger(canary.resultCount) &&
-      canary.resultCount > 0 &&
       typeof canary.checkedAt === "string" &&
       canary.git?.commit === currentCommit &&
-      canary.git?.clean === true
-    ) {
-      canaries[provider] = canary;
-    }
+      canary.git?.clean === true;
+    const passed =
+      (canary.status === "passed" || canary.status === undefined) &&
+      Number.isInteger(canary.resultCount) &&
+      canary.resultCount > 0;
+    const failed =
+      canary.status === "failed" &&
+      typeof canary.code === "string" &&
+      /^[A-Z][A-Z0-9_]{1,63}$/u.test(canary.code);
+    if (matchesCommit && (passed || failed)) canaries[provider] = canary;
   } catch {
     // Provider canaries are explicit release actions and may not have run yet.
   }

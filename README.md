@@ -236,8 +236,9 @@ npm pack --dry-run
 
 For a local Brave provider canary, copy `.env.example` to `.env`, set
 `BRAVE_SEARCH_API_KEY`, and run `npm run canary:brave`. The `.env` file is
-ignored by Git and must never be committed. The canary logs only the provider
-name and result count. DuckDuckGo can be checked with
+ignored by Git and must never be committed. A successful canary logs only the
+provider name and result count; a failure logs only the provider, failure
+status, and typed error code. DuckDuckGo can be checked with
 `npm run canary:duckduckgo` and does not require a secret.
 
 Run the installed-Chromium integration test explicitly:

@@ -8,6 +8,43 @@ const projectRoot = new URL("../", import.meta.url);
 
 const requestedMode = process.argv[2] ?? "duckduckgo";
 
+async function readGitState() {
+  const [{ stdout: commit }, { stdout: status }] = await Promise.all([
+    execFileAsync("git", ["rev-parse", "HEAD"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+    }),
+    execFileAsync("git", ["status", "--porcelain=v1"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+    }),
+  ]);
+  return {
+    commit: commit.trim(),
+    clean: status.trim().length === 0,
+  };
+}
+
+async function writeEvidence(mode, result) {
+  const evidence = {
+    ...result,
+    checkedAt: new Date().toISOString(),
+    git: await readGitState(),
+  };
+  await mkdir(new URL("../.release-evidence/", import.meta.url), {
+    recursive: true,
+  });
+  await writeFile(
+    new URL(
+      `../.release-evidence/provider-canary-${mode}.json`,
+      import.meta.url,
+    ),
+    `${JSON.stringify(evidence, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return evidence;
+}
+
 async function runCanary() {
   if (requestedMode !== "duckduckgo" && requestedMode !== "brave") {
     throw new Error("Unknown provider canary mode.");
@@ -32,36 +69,11 @@ async function runCanary() {
   if (hits.length === 0) {
     throw new Error(`${provider.name} canary returned no results.`);
   }
-  const [{ stdout: commit }, { stdout: status }] = await Promise.all([
-    execFileAsync("git", ["rev-parse", "HEAD"], {
-      cwd: projectRoot,
-      encoding: "utf8",
-    }),
-    execFileAsync("git", ["status", "--porcelain=v1"], {
-      cwd: projectRoot,
-      encoding: "utf8",
-    }),
-  ]);
-  const result = {
+  const result = await writeEvidence(requestedMode, {
     provider: provider.name,
+    status: "passed",
     resultCount: hits.length,
-    checkedAt: new Date().toISOString(),
-    git: {
-      commit: commit.trim(),
-      clean: status.trim().length === 0,
-    },
-  };
-  await mkdir(new URL("../.release-evidence/", import.meta.url), {
-    recursive: true,
   });
-  await writeFile(
-    new URL(
-      `../.release-evidence/provider-canary-${requestedMode}.json`,
-      import.meta.url,
-    ),
-    `${JSON.stringify(result, null, 2)}\n`,
-    { mode: 0o600 },
-  );
   process.stdout.write(
     `${JSON.stringify({ provider: result.provider, resultCount: result.resultCount })}\n`,
   );
@@ -84,6 +96,17 @@ try {
       : requestedMode === "duckduckgo"
         ? "duckduckgo"
         : "unknown";
+  if (provider !== "unknown") {
+    try {
+      await writeEvidence(requestedMode, {
+        provider,
+        status: "failed",
+        code,
+      });
+    } catch {
+      // The sanitized stderr result remains available if evidence I/O fails.
+    }
+  }
   process.stderr.write(
     `${JSON.stringify({ provider, status: "failed", code })}\n`,
   );

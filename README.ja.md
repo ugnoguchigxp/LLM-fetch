@@ -234,7 +234,7 @@ npm run verify
 npm pack --dry-run
 ```
 
-Brave Providerをローカルで疎通確認する場合は、`.env.example`を`.env`へコピーして`BRAVE_SEARCH_API_KEY`を設定し、`npm run canary:brave`を実行します。`.env`はGitの除外対象であり、commitしないでください。canaryが出力するのはprovider名と取得件数だけです。DuckDuckGoはsecret不要の`npm run canary:duckduckgo`で確認できます。
+Brave Providerをローカルで疎通確認する場合は、`.env.example`を`.env`へコピーして`BRAVE_SEARCH_API_KEY`を設定し、`npm run canary:brave`を実行します。`.env`はGitの除外対象であり、commitしないでください。成功時はprovider名と取得件数、失敗時はprovider、失敗状態、型付きerror codeだけを出力します。DuckDuckGoはsecret不要の`npm run canary:duckduckgo`で確認できます。
 
 インストール済みChromiumを使う結合テストは、明示的に有効化します。
 

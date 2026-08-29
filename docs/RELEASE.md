@@ -32,9 +32,10 @@ Decision recorded 2026-08-29 by the package maintainer:
   representations rather than a contractual application API. It is not an SLA
   or commercial-availability guarantee.
 - Brave Search or a reviewed custom provider is the production recommendation.
-- A release candidate must record only each live canary's date, provider, and
-  result count. API keys, queries containing secrets, and response bodies must
-  never enter logs or release artifacts.
+- A release candidate records each live canary's date and provider, plus either
+  its result count or its typed failure code. API keys, queries containing
+  secrets, response bodies, and stack traces must never enter logs or release
+  artifacts.
 
 ## One-time package-name bootstrap
 
