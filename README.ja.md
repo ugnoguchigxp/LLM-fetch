@@ -11,7 +11,7 @@ Python、Docker、SearXNG、常駐サービスは不要です。通常のペー�
 
 ## 動作環境
 
-- Node.js 22以上
+- Node.js 20.19以上、またはBun 1.3.14以上
 - ESM / CommonJS
 
 コア機能の直接依存はCheerioだけです。OpenAI SDK、AWS SDK、Playwright、ブラウザ本体は標準インストールに含みません。

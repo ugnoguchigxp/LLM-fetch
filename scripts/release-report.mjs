@@ -6,6 +6,7 @@ import { createGuardCorpusReport } from "./guard-corpus-report.mjs";
 
 const execFileAsync = promisify(execFile);
 const projectRoot = new URL("../", import.meta.url);
+const requireCanaries = process.argv.includes("--require-canaries");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const manifest = JSON.parse(
   await readFile(new URL("package.json", projectRoot), "utf8"),
@@ -72,7 +73,11 @@ try {
       "utf8",
     ),
   );
-  if (benchmark.git?.commit !== currentCommit || benchmark.git?.clean !== true) {
+  if (
+    !clean ||
+    benchmark.git?.commit !== currentCommit ||
+    benchmark.git?.clean !== true
+  ) {
     benchmark = null;
   }
 } catch {
@@ -93,6 +98,7 @@ for (const provider of ["duckduckgo", "brave"]) {
       ),
     );
     const matchesCommit =
+      clean &&
       canary.provider === provider &&
       typeof canary.checkedAt === "string" &&
       canary.git?.commit === currentCommit &&
@@ -108,6 +114,24 @@ for (const provider of ["duckduckgo", "brave"]) {
     if (matchesCommit && (passed || failed)) canaries[provider] = canary;
   } catch {
     // Provider canaries are explicit release actions and may not have run yet.
+  }
+}
+if (requireCanaries) {
+  if (!clean) {
+    throw new Error(
+      "Current-commit provider canary evidence requires a clean worktree.",
+    );
+  }
+  const missing = ["duckduckgo", "brave"].filter(
+    (provider) => canaries[provider] === undefined,
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `Current-commit provider canary evidence is missing: ${missing.join(", ")}.`,
+    );
+  }
+  if (canaries.brave?.status !== "passed") {
+    throw new Error("The Brave provider release canary did not pass.");
   }
 }
 process.stdout.write(

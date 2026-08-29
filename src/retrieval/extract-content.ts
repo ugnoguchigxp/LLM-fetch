@@ -225,6 +225,23 @@ function candidateMetrics(element: AnyNode): {
   };
 }
 
+function candidateCoversBodyText(
+  body: AnyNode,
+  candidates: readonly AnyNode[],
+): boolean {
+  return candidates.some((candidate) => {
+    const stack = [...domNodeChildren(body)];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (!node || node === candidate) continue;
+      const data = domNodeData(node);
+      if (data && /\S/u.test(data)) return false;
+      stack.push(...domNodeChildren(node));
+    }
+    return true;
+  });
+}
+
 function lowerBound<T>(
   values: readonly T[],
   target: number,
@@ -562,6 +579,7 @@ export function extractHtmlContent(
 
   if (candidateElements.length <= DIRECT_CANDIDATE_LIMIT) {
     let bodyCandidate: AnyNode | undefined;
+    const nonBodyCandidates: AnyNode[] = [];
     const scoreDirectCandidate = (element: AnyNode): void => {
       const metrics = candidateMetrics(element);
       const quality = scoreContentMetrics({
@@ -578,10 +596,14 @@ export function extractHtmlContent(
       if (domNodeName(element) === "body") {
         bodyCandidate = element;
       } else {
+        nonBodyCandidates.push(element);
         scoreDirectCandidate(element);
       }
     }
-    if (bodyCandidate && bestText.length < minCharacters) {
+    if (
+      bodyCandidate &&
+      !candidateCoversBodyText(bodyCandidate, nonBodyCandidates)
+    ) {
       scoreDirectCandidate(bodyCandidate);
     }
   } else {

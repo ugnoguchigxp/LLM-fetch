@@ -40,6 +40,7 @@ describe("Context Guard release corpus", () => {
       ).toBe(true);
     }
     expect(attackCorpus.length).toBeGreaterThanOrEqual(100);
+    expect(new Set(attackCorpus.map((fixture) => fixture.seedName)).size).toBeGreaterThanOrEqual(30);
   });
 
   it("keeps benign denial and approval rates within the release gate", async () => {
@@ -62,6 +63,7 @@ describe("Context Guard release corpus", () => {
       ).toBe(true);
     }
     expect(benignCorpus.length).toBeGreaterThanOrEqual(100);
+    expect(new Set(benignCorpus.map((fixture) => fixture.seedName)).size).toBeGreaterThanOrEqual(25);
     const approvalRate =
       results.filter((result) => result.decision === "require_approval").length /
       results.length;

@@ -11,6 +11,8 @@ version, and provenance all refer to the same source.
 - A real publish starts only from a published GitHub Release whose tag is
   exactly `v<package.json version>`.
 - The GitHub `npm` Environment requires maintainer approval.
+- Store `BRAVE_SEARCH_API_KEY` as an `npm` Environment secret; the approved
+  publish job requires both provider canaries before it can publish.
 - Do not store a long-lived npm write token in the repository or GitHub.
 - Release jobs use the exact npm version declared by `packageManager` and no
   package-manager cache.
@@ -20,9 +22,10 @@ version, and provenance all refer to the same source.
 The repository has an `npm` Environment with a required maintainer review and
 an environment branch policy limited to `v*` tags. Active repository rulesets
 protect `main` and `v*` release tags from deletion or history rewrites and
-require the core Node 22/24, Windows packed-consumer, development-audit, and
-Chromium-sandbox checks. Changes therefore land through a checked pull request;
-do not temporarily disable these controls to make a release.
+require the core Node 20.19/22/24 and Bun 1.3.14/1.4 checks, Windows
+packed-consumer, development-audit, and Chromium-sandbox checks. Changes
+therefore land through a checked pull request; do not temporarily disable these
+controls to make a release.
 
 ## Provider policy record
 
@@ -36,6 +39,10 @@ Decision recorded 2026-08-29 by the package maintainer:
   its result count or its typed failure code. API keys, queries containing
   secrets, response bodies, and stack traces must never enter logs or release
   artifacts.
+- Brave must pass because it is the production recommendation. A DuckDuckGo
+  challenge or other typed failure may proceed to maintainer review because the
+  provider is explicitly experimental, but the current-commit evidence record
+  must still exist.
 
 ## One-time package-name bootstrap
 
@@ -92,7 +99,7 @@ an unverified build the default release:
    npm run verify
    npm run bench:ci
    npm audit
-   npm run verify:release-report
+   npm run verify:release-report -- --require-canaries
    npm pack --dry-run --json
    ```
 
@@ -110,7 +117,11 @@ an unverified build the default release:
 
 The GitHub Release starts `.github/workflows/publish.yml`. The workflow repeats
 verification, checks the tag in both jobs, waits for the `npm` Environment
-approval, then publishes with OIDC provenance.
+approval, runs both provider canaries with current-commit evidence, then
+publishes with OIDC provenance. Missing, stale, or dirty-worktree evidence and
+any Brave failure stop publication. A typed DuckDuckGo failure is retained for
+maintainer review without turning an experimental provider outage into a
+release-infrastructure failure.
 
 After completion:
 

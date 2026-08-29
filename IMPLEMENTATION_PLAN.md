@@ -7,13 +7,13 @@
 | 対象 | `llm-fetch` |
 | 目標 | 公開npmパッケージ `v0.1.0` |
 | 基準日 | 2026-08-29 |
-| 現在の判定 | リポジトリ改修は完了。公開は別トラックのWindows / Chromium CI、初回npm登録、provenance確認、明示承認までNO-GO |
+| 現在の判定 | Windows / Chromiumを含むCI/CDは解決済み。公開は初回npm登録、Trusted Publisher設定、provenance確認、明示承認までNO-GO |
 | この文書の役割 | コード監査で確認した課題を、実装順序・完了条件・検証方法へ変換する |
 | 関連文書 | [plan.md](./plan.md)、[README.md](./README.md)、[README.ja.md](./README.ja.md)、[SECURITY.md](./SECURITY.md) |
 
 `plan.md`は製品の設計経緯と全体仕様を保持する。本書は、公開前の残作業と品質改善を実行するための計画として使用する。
 
-2026-08-29の再評価で見つかった本文抽出回帰、secret管理、公開操作の保護、評価コーパス規模、Provider方針、source map、保守性、benchmark安定性は第11節の実装で解消した。Windows packed consumerとChromium sandboxのCI実行、初回npm登録とprovenance確認は別トラックとして残る。
+2026-08-29の再評価で見つかった本文抽出回帰、secret管理、公開操作の保護、評価コーパス規模、Provider方針、source map、保守性、benchmark安定性は第11節の実装で解消した。その後の再レビューで確認した少数候補時の本文抽出回帰、Node.js対応下限、公開時canary、コーパスの独立性、文書とCI保護設定の不整合は第12節で解消する。Windows packed consumerとChromium sandboxのCI/CDは成功済みであり、初回npm登録とprovenance確認だけが外部ゲートとして残る。
 
 ## 2. 目標と完了状態
 
@@ -21,7 +21,7 @@
 
 1. 未信頼HTMLを入力しても、設定した期限と構造上限を大きく超えず、生の実装例外を公開境界へ漏らさない。
 2. 検査対象を切り捨てた場合は必ず安全側の判定になり、利用者が検査限界を確認できる。
-3. Node.js 22 / 24のESM、CommonJS、型定義、core-only構成が梱包後も動作する。
+3. Node.js 20.19 / 22 / 24およびBun 1.3.14 / 1.4で、対象となるESM、CommonJS、型定義、core-only構成が動作する。
 4. Chromiumを使う統合テストが、独立したsandbox環境で安定して成功する。
 5. npm上の最終パッケージ名、リポジトリ情報、ライセンス、provenance、公開手順が一致する。
 6. OpenAI Responses API、OpenAI Chat Completions、Amazon Bedrockの対応範囲がAPI名と文書から判別できる。
@@ -186,7 +186,7 @@ G4は自動的に実行しない。npmへの実publishは、最終パッケー�
 
 実装内容:
 
-- UbuntuのNode.js 22 / 24に加え、Windows Node.js 22のconsumer testを追加する。
+- UbuntuのNode.js 20.19 / 22 / 24に加え、Windows Node.js 22のconsumer testを追加する。
 - 必要に応じてmacOS Node.js 22をrelease前またはscheduled jobで実行する。
 - workflowへ`concurrency`を設定し、同じbranchの古い実行をcancelする。
 - core jobとbrowser jobに明示的なtimeoutを設定する。
@@ -686,7 +686,7 @@ npm run bench:ci
 
 追加job:
 
-- Node.js 22 / 24 core matrix。
+- Node.js 20.19 / 22 / 24とBun 1.3.14 / 1.4のcore matrix。
 - Windows packed-consumer test。
 - sandbox有効のLinux Chromium integration。
 - OpenAI / Bedrock type compatibility。
@@ -733,12 +733,12 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 - [x] SEC-01: 深いHTMLでdeadline逸脱や生の`RangeError`が発生しない
 - [x] SEC-02: segment切り捨てが必ずGuard判定へ反映される
 - [x] SEC-03: charset処理がclientとstandalone Guardで一致する
-- [ ] GitHub Actionsの全必須jobが成功している
-- [ ] Chromium sandbox有効のintegration testがGitHub Actionsで成功している（別トラック）
+- [x] GitHub Actionsの全必須jobが成功している
+- [x] Chromium sandbox有効のintegration testがGitHub Actionsで成功している
 - [x] coverageとGuardコーパスの閾値を満たしている
 - [x] performance targetを満たすか、変更理由が承認されている
 - [x] OpenAI Responses / Chat Completions / Bedrockの互換テストが成功している
-- [ ] Windowsを含むpacked consumer testが成功している
+- [x] Windowsを含むpacked consumer testが成功している
 - [x] final package名、README、repository metadataが一致している
 - [x] DuckDuckGoの公開上の扱いが確定している
 - [x] `.env`の`BRAVE_SEARCH_API_KEY`を用いたBrave live canaryが成功している
@@ -992,7 +992,7 @@ node scripts/provider-canary.mjs duckduckgo
 npm pack --dry-run --json
 ```
 
-公開判定では、別トラックのWindows / Chromiumを含む全CI成功、GitHub Environment承認、Provider方針確定、`private: false`へ変更したrelease commit、tag / version一致を追加で要求する。
+公開判定では、Windows / Chromiumを含む全CI成功、GitHub Environment承認、Provider方針確定、`private: false`へ変更したrelease commit、tag / version一致を追加で要求する。
 
 ### 11.13 実装結果（2026-08-29）
 
@@ -1002,13 +1002,42 @@ npm pack --dry-run --json
 | COR-01 | 完了 | 候補の祖先を除外せず、単一DOM走査のrange / prefix indexで全候補を評価。teaserと長い兄弟本文、link密度の回帰testを追加した |
 | REL-01 | 完了 | 手動workflowを検証専用にし、npm 11.6.4を固定。`npm` Environment、`main` / `v*` ruleset、tag/version・private gateを設定した |
 | REL-02 | repository側完了 | 初回`0.0.0` bootstrap、Trusted Publisher設定、token失効、公開後確認を`docs/RELEASE.md`へ記録。実registry操作は公開承認後に行う |
-| EVAL-01 | 完了 | attack 125件、benign 100件。attack allow 0、最低判定未達0、finding category不一致0、benign deny 0、approval 0を確認した |
+| EVAL-01 | 完了 | attack 155件（独立seed 31件）、benign 125件（独立seed 25件）。attack allow 0、最低判定未達0、finding category不一致0、benign deny 0、approval 0を確認した |
 | PROV-01 | 完了 | 2026-08-29にDuckDuckGo 1件、Brave 3件を取得。DuckDuckGoをexperimental / best-effort、Brave / reviewed customを本番推奨に確定した |
 | DOC-05 | 完了 | release reportへGit commit / clean状態、Guard集計、benchmark、provider canary記録を追加した |
 | BUILD-01 | 完了 | ESM / CJSとPlaywright entryの外部source mapを梱包し、absolute path非露出とTypeScript stack trace解決をpacked consumerで検証した |
 | MNT-03 | 完了 | `client.ts`の入力・結果validationとclient option validationを`client-validation.ts` / `client-options.ts`へ分割し、公開APIを維持した |
 | PERF-03 | 完了 | 3つの独立processの中央値で判定し、HTML 1 MiB抽出＋Guardが75ms閾値内であることを確認した。値はcommit連動のrelease reportを正本とする |
 
-ローカル最終検証では、19 test file、242 test（235成功、7明示skip）と全coverage閾値を通過した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportはすべて成功した。packは24 fileで、ESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証済みである。変動するcoverage、benchmark、pack size、canary日時は、対象commitとclean状態が一致する`.release-evidence/`およびrelease reportを正本とする。
+ローカル最終検証では20 test file、246 test（239成功、7明示skip）を確認した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportを公開候補ごとに実行する。packはESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証する。coverage、benchmark、pack size、canary日時は、対象commitとclean状態が一致する`.release-evidence/`およびrelease reportを正本とする。
 
-残作業は本節のrepository改修ではなく、公開時の外部ゲートである。別トラックのWindows packed consumer / Chromium sandbox CIを成功させ、`llm-fetch@0.0.0`の初回登録とTrusted Publisher設定、`private: false`のrelease commit、`v0.1.0` provenance、明示的な公開承認を順に確認する。それまではnpm publishを実行しない。
+残作業はrepository改修ではなく、公開時の外部ゲートである。`llm-fetch@0.0.0`の初回登録とTrusted Publisher設定、`npm` EnvironmentへのBrave canary secret設定、`private: false`のrelease commit、`v0.1.0` provenance、明示的な公開承認を順に確認する。それまではnpm publishを実行しない。
+
+## 12. 最終再レビュー後の改善（2026-08-29）
+
+### 12.1 改善項目
+
+| ID | 状態 | 改善内容 |
+| --- | --- | --- |
+| COR-02 | 完了 | 候補が4件以下の高速経路でも`body`を必ず比較し、短い`article`と長い候補外`section`が兄弟になる回帰testを追加 |
+| RUN-01 | 完了 | `engines.node`、README、開発文書、CIの最低Node.jsを20.19へ統一し、CIで20.19.0を固定検証 |
+| REL-03 | 完了 | 公開jobでDuckDuckGo / Brave canaryを必須実行し、現commit・clean worktreeの証跡欠落またはBrave失敗ならpublishを停止。experimentalなDuckDuckGoの型付き失敗は承認者が確認できる形で保持 |
+| EVAL-02 | 完了 | Guard reportへ独立seed数を追加し、attack 30件以上・benign 25件以上をrelease gate化 |
+| DOC-06 | 完了 | README、release runbook、実装計画、CI/CDの完了状態と対応runtimeを同期 |
+| GOV-01 | 完了 | `main`と`v*`のrulesetへNode.js 20.19とBun 1.3.14 / 1.4を必須checkとして追加 |
+
+### 12.2 公開判定
+
+repository内の既知のP1改修とCI/CD整備は完了とする。npm公開は、初回package名登録、Trusted Publisher設定、`npm` Environmentへの`BRAVE_SEARCH_API_KEY`登録、release commitの`private: false`、tag/version一致、provenance、明示承認を満たすまでNO-GOとする。
+
+### 12.3 検証結果
+
+- Node.js 24.11.1で`npm run verify`が成功し、20 test file、246 test（239成功、7明示skip）と全coverage gateを通過した。
+- Node.js 20.19.0を明示指定した全testが成功した。
+- coverageはstatement 86.51%、branch 81.17%、function 95.61%、line 89.35%だった。
+- HTML 1 MiB抽出＋Guardのlocal median p95は34.20ms、最大p95は34.76msで、75ms閾値を満たした。
+- Guard corpusはattack 155件・独立seed 31件、benign 125件・独立seed 25件で、見逃し・category不一致・deny・approvalはいずれも0件だった。
+- DuckDuckGo canaryは2件、Brave canaryは3件を取得した。
+- `actionlint`、production / development audit、packaged ESM / CommonJS / type / core-only consumer、`publint`、Are The Types Wrongが成功した。
+- `--require-canaries`はdirty worktreeの証跡を拒否することを確認した。release workflowではclean checkout上で両canaryを再実行する。
+- GitHubの`Protect main`と`Protect release tags` rulesetにNode.js 20.19 / 22 / 24、Bun 1.3.14 / 1.4、Windows、development audit、Chromiumを必須checkとして設定した。

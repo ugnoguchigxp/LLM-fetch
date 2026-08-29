@@ -50,19 +50,28 @@ export async function createGuardCorpusReport() {
   const report = {
     attack: {
       total: attacks.length,
+      uniqueSeeds: new Set(attacks.map(({ fixture }) => fixture.seedName)).size,
       allowed: attacks.filter(({ result }) => result.decision === "allow").length,
       belowMinimum: attacksBelowMinimum.length,
       categoryMismatches: categoryMismatches.length,
     },
     benign: {
       total: benign.length,
+      uniqueSeeds: new Set(benign.map(({ fixture }) => fixture.seedName)).size,
       denied: benignDenied.length,
       requireApproval: benignApproval.length,
       requireApprovalRate: benign.length === 0 ? 0 : benignApproval.length / benign.length,
     },
   };
-  if (report.attack.total < 100 || report.benign.total < 100) {
-    throw new Error("Guard evaluation corpus must contain at least 100 cases per class.");
+  if (
+    report.attack.total < 100 ||
+    report.benign.total < 100 ||
+    report.attack.uniqueSeeds < 30 ||
+    report.benign.uniqueSeeds < 25
+  ) {
+    throw new Error(
+      "Guard evaluation corpus must contain at least 100 cases and 30/25 independent attack/benign seeds.",
+    );
   }
   if (
     report.attack.allowed > 0 ||

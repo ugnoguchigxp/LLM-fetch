@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 22 or 24 and the npm version declared in `packageManager`.
+Use Node.js 20.19, 22, or 24 and the npm version declared in `packageManager`.
 
 ```sh
 npm ci

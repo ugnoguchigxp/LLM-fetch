@@ -9,3 +9,6 @@ All notable changes to this project are documented here. Versions follow Semanti
 - Added a fail-closed Context Guard with structured taint, findings, limitations, and approval decisions.
 - Added ESM, CommonJS, NodeNext, bundler, OpenAI Responses, OpenAI Chat Completions, and Amazon Bedrock compatibility checks.
 - Added release coverage, package, type, license, performance, Chromium sandbox, and provenance workflows.
+- Fixed extraction when a short candidate precedes longer body-only content.
+- Declared and tested Node.js 20.19 as the exact minimum supported Node release.
+- Made release provider canaries mandatory and expanded the independent Context Guard corpus.

@@ -11,7 +11,7 @@ The core package is written in TypeScript and does not require Python, Docker, S
 
 ## Requirements
 
-- Node.js 22 or later
+- Node.js 20.19 or later, or Bun 1.3.14 or later
 - ESM or CommonJS
 
 Cheerio is the only direct runtime dependency of the core package. OpenAI SDKs, AWS SDKs, Playwright, and browser binaries are not installed with the core package.
