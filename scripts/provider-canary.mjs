@@ -1,5 +1,10 @@
+import { execFile } from "node:child_process";
 import { brave, duckDuckGo } from "../dist/index.js";
 import { mkdir, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+const projectRoot = new URL("../", import.meta.url);
 
 const mode = process.argv[2] ?? "duckduckgo";
 if (mode !== "duckduckgo" && mode !== "brave") {
@@ -25,14 +30,30 @@ const hits = await provider.search({
 if (hits.length === 0) {
   throw new Error(`${provider.name} canary returned no results.`);
 }
+const [{ stdout: commit }, { stdout: status }] = await Promise.all([
+  execFileAsync("git", ["rev-parse", "HEAD"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+  execFileAsync("git", ["status", "--porcelain=v1"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+]);
 const result = {
   provider: provider.name,
   resultCount: hits.length,
   checkedAt: new Date().toISOString(),
+  git: {
+    commit: commit.trim(),
+    clean: status.trim().length === 0,
+  },
 };
-await mkdir(new URL("../coverage/", import.meta.url), { recursive: true });
+await mkdir(new URL("../.release-evidence/", import.meta.url), {
+  recursive: true,
+});
 await writeFile(
-  new URL(`../coverage/provider-canary-${mode}.json`, import.meta.url),
+  new URL(`../.release-evidence/provider-canary-${mode}.json`, import.meta.url),
   `${JSON.stringify(result, null, 2)}\n`,
   { mode: 0o600 },
 );

@@ -63,10 +63,25 @@ const summary = {
   strategy: "median of three isolated sequential processes",
   results,
 };
-const coverageDirectory = new URL("../coverage/", import.meta.url);
-await mkdir(coverageDirectory, { recursive: true });
+const projectRoot = new URL("../", import.meta.url);
+const [{ stdout: commit }, { stdout: status }] = await Promise.all([
+  execFileAsync("git", ["rev-parse", "HEAD"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+  execFileAsync("git", ["status", "--porcelain=v1"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+]);
+summary.git = {
+  commit: commit.trim(),
+  clean: status.trim().length === 0,
+};
+const evidenceDirectory = new URL("../.release-evidence/", import.meta.url);
+await mkdir(evidenceDirectory, { recursive: true });
 await writeFile(
-  new URL("benchmark-summary.json", coverageDirectory),
+  new URL("benchmark-summary.json", evidenceDirectory),
   `${JSON.stringify(summary, null, 2)}\n`,
 );
 process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

@@ -42,6 +42,19 @@ const testRun = await execFileAsync(
 );
 const testReport = JSON.parse(testRun.stdout);
 
+const [{ stdout: commit }, { stdout: worktreeStatus }] = await Promise.all([
+  execFileAsync("git", ["rev-parse", "HEAD"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+  execFileAsync("git", ["status", "--porcelain=v1"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+]);
+const currentCommit = commit.trim();
+const clean = worktreeStatus.trim().length === 0;
+
 let coverage;
 try {
   coverage = JSON.parse(
@@ -55,10 +68,13 @@ let benchmark;
 try {
   benchmark = JSON.parse(
     await readFile(
-      new URL("coverage/benchmark-summary.json", projectRoot),
+      new URL(".release-evidence/benchmark-summary.json", projectRoot),
       "utf8",
     ),
   );
+  if (benchmark.git?.commit !== currentCommit || benchmark.git?.clean !== true) {
+    benchmark = null;
+  }
 } catch {
   benchmark = null;
 }
@@ -69,7 +85,10 @@ for (const provider of ["duckduckgo", "brave"]) {
   try {
     const canary = JSON.parse(
       await readFile(
-        new URL(`coverage/provider-canary-${provider}.json`, projectRoot),
+        new URL(
+          `.release-evidence/provider-canary-${provider}.json`,
+          projectRoot,
+        ),
         "utf8",
       ),
     );
@@ -77,7 +96,9 @@ for (const provider of ["duckduckgo", "brave"]) {
       canary.provider === provider &&
       Number.isInteger(canary.resultCount) &&
       canary.resultCount > 0 &&
-      typeof canary.checkedAt === "string"
+      typeof canary.checkedAt === "string" &&
+      canary.git?.commit === currentCommit &&
+      canary.git?.clean === true
     ) {
       canaries[provider] = canary;
     }
@@ -85,25 +106,14 @@ for (const provider of ["duckduckgo", "brave"]) {
     // Provider canaries are explicit release actions and may not have run yet.
   }
 }
-const [{ stdout: commit }, { stdout: worktreeStatus }] = await Promise.all([
-  execFileAsync("git", ["rev-parse", "HEAD"], {
-    cwd: projectRoot,
-    encoding: "utf8",
-  }),
-  execFileAsync("git", ["status", "--porcelain=v1"], {
-    cwd: projectRoot,
-    encoding: "utf8",
-  }),
-]);
-
 process.stdout.write(
   `${JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
       node: process.version,
       git: {
-        commit: commit.trim(),
-        clean: worktreeStatus.trim().length === 0,
+        commit: currentCommit,
+        clean,
       },
       package: {
         name: manifest.name,

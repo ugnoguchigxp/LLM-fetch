@@ -96,6 +96,10 @@ an unverified build the default release:
    ```
 
 4. Review the tarball contents for secrets and unexpected files.
+   Benchmark and provider-canary summaries are kept in the ignored
+   `.release-evidence/` directory. The release report accepts them only when
+   their recorded commit matches `HEAD` and they were produced from a clean
+   worktree.
 5. Update `CHANGELOG.md`, remove `private: true` in a dedicated release commit,
    and verify the exact npm CLI version with `npm run verify:npm-version`.
 6. Create signed tag `v<version>` at that commit and publish the corresponding

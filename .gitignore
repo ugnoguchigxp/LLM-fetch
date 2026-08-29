@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.release-evidence/
 *.tgz
 .DS_Store
 .env
