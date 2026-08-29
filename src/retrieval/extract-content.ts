@@ -154,7 +154,6 @@ interface IndexedCandidateMetrics {
 interface TextRun {
   start: number;
   end: number;
-  text: string;
 }
 
 interface LinkInterval {
@@ -191,6 +190,24 @@ function prefixSums(values: readonly number[]): number[] {
     prefix.push((prefix.at(-1) ?? 0) + value);
   }
   return prefix;
+}
+
+function normalizedGapLength(
+  value: string,
+  start: number,
+  end: number,
+): number {
+  let newlineCount = 0;
+  for (let index = start; index < end; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x0d) {
+      newlineCount += 1;
+      if (value.charCodeAt(index + 1) === 0x0a) index += 1;
+    } else if (code === 0x0a) {
+      newlineCount += 1;
+    }
+  }
+  return newlineCount === 0 ? 1 : Math.min(2, newlineCount);
 }
 
 function buildCandidateTextIndex(
@@ -299,14 +316,14 @@ function buildCandidateTextIndex(
   for (const match of rawText.matchAll(/[^\t\f\v\r\n ]+/gu)) {
     const text = match[0];
     const start = match.index;
-    runs.push({ start, end: start + text.length, text });
+    runs.push({ start, end: start + text.length });
   }
-  const textPrefix = prefixSums(runs.map((run) => run.text.length));
+  const textPrefix = prefixSums(runs.map((run) => run.end - run.start));
   const gapPrefix = prefixSums(
     runs.slice(0, -1).map((run, index) => {
       const next = runs[index + 1];
       if (!next) return 0;
-      return normalizePlainText(`a${rawText.slice(run.end, next.start)}b`).length - 2;
+      return normalizedGapLength(rawText, run.end, next.start);
     }),
   );
   const paragraphCount = (range: CandidateRange): number => {
@@ -317,18 +334,28 @@ function buildCandidateTextIndex(
   const characterCount = (range: CandidateRange): number => {
     let start = lowerBound(runs, range.start, (run) => run.start);
     let end = lowerBound(runs, range.end, (run) => run.start);
-    while (start < end && !runs[start]?.text.trim()) start += 1;
-    while (end > start && !runs[end - 1]?.text.trim()) end -= 1;
+    while (start < end) {
+      const run = runs[start];
+      if (run && rawText.slice(run.start, run.end).trim()) break;
+      start += 1;
+    }
+    while (end > start) {
+      const run = runs[end - 1];
+      if (run && rawText.slice(run.start, run.end).trim()) break;
+      end -= 1;
+    }
     if (start >= end) return 0;
     const first = runs[start];
     const last = runs[end - 1];
     if (!first || !last) return 0;
-    if (first === last) return first.text.trim().length;
+    const firstText = rawText.slice(first.start, first.end);
+    if (first === last) return firstText.trim().length;
+    const lastText = rawText.slice(last.start, last.end);
     const textCharacters =
       (textPrefix[end] ?? 0) -
       (textPrefix[start] ?? 0) -
-      (first.text.length - first.text.trimStart().length) -
-      (last.text.length - last.text.trimEnd().length);
+      (firstText.length - firstText.trimStart().length) -
+      (lastText.length - lastText.trimEnd().length);
     const gaps = (gapPrefix[end - 1] ?? 0) - (gapPrefix[start] ?? 0);
     return textCharacters + gaps;
   };
