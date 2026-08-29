@@ -796,7 +796,7 @@ npm install llm-fetch @playwright/browser-chromium
 - README、API reference、SECURITY.md、LICENSE、NOTICEを作成
 - npm pack内容とunpacked sizeをCIで検査
 - dependency license allowlistをCIへ追加
-- provenance付きnpm publishを設定
+- 検証済みのローカルcheckoutから手動でnpm publishする手順を整備
 - DuckDuckGo利用上の注意とSLAなしをREADMEへ明記
 
 完了条件:
@@ -1035,7 +1035,7 @@ v0.1では機能数より、検索・取得の失敗理由が明確で、ブラ�
 
 - frozen実サイトfixtureの拡充
 - live Brave smoke test（API key未設定）
-- npm Trusted PublisherとGitHub environment承認者の外部設定
+- npmへの`v0.1.0`手動publish
 
 ## 18. Playwright拡張の詳細実装設計（初期版実装済み）
 

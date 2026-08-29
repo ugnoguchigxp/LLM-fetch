@@ -1,98 +1,43 @@
 # Release runbook
 
-This runbook is for maintainers of the public `llm-fetch` npm package. A
-release is not complete until the npm package, GitHub Release, tag, commit,
-version, and provenance all refer to the same source.
+This runbook is for maintainers of the public `llm-fetch` npm package. npm
+publication is an explicit local operation. No GitHub Actions workflow publishes
+the package.
 
 ## Invariants
 
-- Keep `private: true` until every release gate is complete.
-- A manual `workflow_dispatch` verifies only; it can never publish.
-- A real publish starts only from a published GitHub Release whose tag is
-  exactly `v<package.json version>`.
-- The GitHub `npm` Environment requires maintainer approval.
-- Store `BRAVE_SEARCH_API_KEY` as an `npm` Environment secret; the approved
-  publish job requires both provider canaries before it can publish.
-- Do not store a long-lived npm write token in the repository or GitHub.
-- Release jobs use the exact npm version declared by `packageManager` and no
-  package-manager cache.
+- Keep `private: true` until the release commit is ready to publish.
+- Publish only from a clean checkout of the reviewed release commit.
+- Use the npm account's interactive authentication and 2FA requirements.
+- Keep `BRAVE_SEARCH_API_KEY` in the local `.env` file. Do not commit it or copy
+  it to GitHub for npm publication.
+- Never place npm credentials or provider API keys in repository files, logs, or
+  release artifacts.
+- Do not automate `npm publish` without a separate maintainer decision.
 
-## Repository release controls
+## Provider policy
 
-The repository has an `npm` Environment with a required maintainer review and
-an environment branch policy limited to `v*` tags. Active repository rulesets
-protect `main` and `v*` release tags from deletion or history rewrites and
-require the core Node 20.19/22/24 and Bun 1.3.14/1.4 checks, Windows
-packed-consumer, development-audit, and Chromium-sandbox checks. Changes
-therefore land through a checked pull request; do not temporarily disable these
-controls to make a release.
-
-## Provider policy record
-
-Decision recorded 2026-08-29 by the package maintainer:
-
-- DuckDuckGo support remains experimental and best effort because it uses web
-  representations rather than a contractual application API. It is not an SLA
-  or commercial-availability guarantee.
+- DuckDuckGo support is experimental and best effort because it uses web
+  representations rather than a contractual application API.
 - Brave Search or a reviewed custom provider is the production recommendation.
 - A release candidate records each live canary's date and provider, plus either
-  its result count or its typed failure code. API keys, queries containing
-  secrets, response bodies, and stack traces must never enter logs or release
-  artifacts.
-- Brave must pass because it is the production recommendation. A DuckDuckGo
-  challenge or other typed failure may proceed to maintainer review because the
-  provider is explicitly experimental, but the current-commit evidence record
-  must still exist.
+  its result count or typed failure code. API keys, response bodies, and stack
+  traces must not enter the record.
+- Brave must pass before publication. A typed DuckDuckGo challenge may proceed
+  to maintainer review because that provider is experimental.
 
-## One-time package-name bootstrap
+## Prepare the release
 
-npm Trusted Publisher configuration requires the package name to exist first.
-At the time of writing, `llm-fetch` is unregistered. Reserve it without making
-an unverified build the default release:
-
-1. Enable account-level 2FA on the owning npm account.
-2. In a temporary directory outside this checkout, create a minimal MIT package
-   named `llm-fetch` at version `0.0.0`. Include the canonical repository URL,
-   a README explaining that this is a name-reservation bootstrap, and no
-   executable code.
-3. Inspect its tarball with `npm pack --dry-run --json`.
-4. Publish interactively with 2FA under a non-default tag:
-
-   ```sh
-   npm publish --access public --tag bootstrap
-   ```
-
-5. Configure the package's GitHub Trusted Publisher for repository
-   `ugnoguchigxp/LLM-fetch`, workflow `publish.yml`, Environment `npm`, and the
-   `npm publish` action. The equivalent npm CLI command, when available to the
-   account, is:
-
-   ```sh
-   npm trust github llm-fetch \
-     --repo ugnoguchigxp/LLM-fetch \
-     --file publish.yml \
-     --env npm \
-     --allow-publish
-   ```
-
-6. Do not add a bootstrap token to `publish.yml`. Delete any temporary token or
-   temporary directory used during reservation.
-7. After `v0.1.0` is published with provenance, remove the `bootstrap` dist-tag.
-   The immutable `0.0.0` version may remain in registry history.
-
-## Release preparation
-
-1. Confirm that required CI and provider canaries are green for the intended
-   commit.
-2. Confirm the DuckDuckGo support decision in the release record and run Brave
-   with a secret supplied outside Git:
+1. Confirm that the required CI checks are green for the intended commit.
+2. From a clean local checkout, run the provider canaries. The Brave command
+   reads `BRAVE_SEARCH_API_KEY` from the ignored `.env` file:
 
    ```sh
    npm run canary:duckduckgo
    npm run canary:brave
    ```
 
-3. Run the complete local verification and inspect the release report:
+3. Run the complete verification and inspect the package contents:
 
    ```sh
    npm ci
@@ -103,33 +48,37 @@ an unverified build the default release:
    npm pack --dry-run --json
    ```
 
-4. Review the tarball contents for secrets and unexpected files.
-   Benchmark and provider-canary summaries are kept in the ignored
-   `.release-evidence/` directory. The release report accepts them only when
-   their recorded commit matches `HEAD` and they were produced from a clean
-   worktree.
-5. Update `CHANGELOG.md`, remove `private: true` in a dedicated release commit,
-   and verify the exact npm CLI version with `npm run verify:npm-version`.
-6. Create signed tag `v<version>` at that commit and publish the corresponding
-   GitHub Release.
+4. Review the tarball contents for secrets and unexpected files. Canary and
+   benchmark summaries stay in the ignored `.release-evidence/` directory and
+   must refer to the current clean commit.
+5. Update `CHANGELOG.md` and the version if necessary. Remove `private: true`
+   in the dedicated release commit, then repeat the verification commands.
+6. Create a signed local tag named `v<package.json version>` at that exact
+   commit.
 
-## Publish and verification
+## Publish manually
 
-The GitHub Release starts `.github/workflows/publish.yml`. The workflow repeats
-verification, checks the tag in both jobs, waits for the `npm` Environment
-approval, runs both provider canaries with current-commit evidence, then
-publishes with OIDC provenance. Missing, stale, or dirty-worktree evidence and
-any Brave failure stop publication. A typed DuckDuckGo failure is retained for
-maintainer review without turning an experimental provider outage into a
-release-infrastructure failure.
+Authenticate interactively and publish from the repository root:
 
-After completion:
+```sh
+npm login
+npm whoami
+npm publish --access public
+```
 
-1. Check the npm package version and `latest` dist-tag.
-2. Inspect provenance and confirm the repository and release commit.
-3. Install the published package into empty ESM, CommonJS, NodeNext, and bundler
+`prepublishOnly` reruns the repository verification before npm accepts the
+package. Complete any npm 2FA prompt directly; do not store its credentials in
+GitHub.
+
+## Verify and announce
+
+1. Confirm the published version and `latest` tag with `npm view llm-fetch`.
+2. Install the published version in empty ESM, CommonJS, NodeNext, and bundler
    consumers.
-4. Record the workflow URL, commit SHA, tag, package integrity, pack size,
-   coverage, benchmark summary, and provider-canary counts in the release.
-5. If any identity or provenance value differs, deprecate the affected version
-   and investigate; never attempt to reuse the same npm version.
+3. Record the commit SHA, tag, npm integrity, pack size, coverage, benchmark,
+   and provider-canary results in the release notes.
+4. Push the release commit and signed tag, then create the matching GitHub
+   Release.
+5. If package identity or contents are wrong, deprecate the affected version
+   and publish a corrected new version. npm versions are immutable and must not
+   be reused.

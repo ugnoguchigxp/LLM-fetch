@@ -12,4 +12,4 @@ Changes to retrieval, parsing, browser boundaries, or Context Guard behavior nee
 
 Keep pull requests focused. Record externally observable API changes in `CHANGELOG.md`. Never include fetched bodies, private URLs, API keys, cookies, or other secrets in fixtures, logs, issues, or error messages.
 
-Releases require all protected-branch checks, a package/version-matching tag, the npm environment approval, and provenance through the repository publish workflow. Do not publish from a developer workstation.
+Releases are maintainer-only and are published explicitly from a verified local checkout with `npm publish --access public`. No GitHub Actions workflow publishes this package.
