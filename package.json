@@ -1,0 +1,94 @@
+{
+  "name": "@scope/llm-fetch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fast, safe web search and content retrieval for LLM applications",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "SECURITY.md"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "playwright": [
+        "./dist/playwright/index.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./playwright": {
+      "import": {
+        "types": "./dist/playwright/index.d.ts",
+        "default": "./dist/playwright/index.js"
+      },
+      "require": {
+        "types": "./dist/playwright/index.d.cts",
+        "default": "./dist/playwright/index.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "bench": "vitest bench --run",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "lint": "eslint src test bench scripts",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run verify",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run verify:licenses && npm run verify:package",
+    "verify:licenses": "node scripts/verify-licenses.mjs",
+    "verify:package": "node scripts/verify-package.mjs"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^24.12.0",
+    "eslint": "^9.39.4",
+    "globals": "^17.7.0",
+    "playwright-core": "^1.62.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.62.0",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "playwright-core": "^1.62.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

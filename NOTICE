@@ -1,0 +1,16 @@
+llm-fetch
+Copyright 2026 llm-fetch contributors
+
+The prompt-injection threat model and test design were informed by Prompt Shield,
+which is available under the MIT License:
+Copyright (c) 2026 Prompt Shield Contributors.
+
+No Prompt Shield runtime, Rust core, or WebAssembly binary is included.
+
+The optional Playwright integration interoperates with playwright-core, licensed
+under Apache-2.0 by Microsoft Corporation and contributors. Playwright and
+Chromium browser binaries are not included in this package.
+
+DuckDuckGo signed-preload behavior was independently verified with ddg-kit
+(https://github.com/lennney/ddg-kit), which is available under the Apache
+License 2.0. ddg-kit is not included as a runtime dependency.
