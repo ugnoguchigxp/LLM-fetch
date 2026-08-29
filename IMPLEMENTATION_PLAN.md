@@ -1009,7 +1009,7 @@ npm pack --dry-run --json
 | MNT-03 | 完了 | `client.ts`の入力・結果validationとclient option validationを`client-validation.ts` / `client-options.ts`へ分割し、公開APIを維持した |
 | PERF-03 | 完了 | 3つの独立processの中央値で判定し、HTML 1 MiB抽出＋Guardが75ms閾値内であることを確認した。値はcommit連動のrelease reportを正本とする |
 
-ローカル最終検証では20 test file、245 test（238成功、7明示skip）を確認した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportを公開候補ごとに実行する。packはESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証する。coverage、benchmark、pack size、canary日時は、対象commitとclean状態が一致する`.release-evidence/`およびrelease reportを正本とする。
+ローカル最終検証では20 test file、246 test（239成功、7明示skip）を確認した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportを公開候補ごとに実行する。packはESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証する。coverage、benchmark、pack size、canary日時は、対象commitとclean状態が一致する`.release-evidence/`およびrelease reportを正本とする。
 
 残作業はrepository改修ではなく、公開時の外部ゲートである。`llm-fetch@0.0.0`の初回登録とTrusted Publisher設定、`npm` EnvironmentへのBrave canary secret設定、`private: false`のrelease commit、`v0.1.0` provenance、明示的な公開承認を順に確認する。それまではnpm publishを実行しない。
 
@@ -1032,10 +1032,10 @@ repository内の既知のP1改修とCI/CD整備は完了とする。npm公開は
 
 ### 12.3 検証結果
 
-- Node.js 24.11.1で`npm run verify`が成功し、20 test file、245 test（238成功、7明示skip）と全coverage gateを通過した。
+- Node.js 24.11.1で`npm run verify`が成功し、20 test file、246 test（239成功、7明示skip）と全coverage gateを通過した。
 - Node.js 20.19.0を明示指定した全testが成功した。
-- coverageはstatement 86.44%、branch 81.14%、function 95.58%、line 89.29%だった。
-- HTML 1 MiB抽出＋Guardのmedian p95は38.03ms、最大p95は38.97msで、75ms閾値を満たした。
+- coverageはstatement 86.51%、branch 81.17%、function 95.61%、line 89.35%だった。
+- HTML 1 MiB抽出＋Guardのlocal median p95は34.20ms、最大p95は34.76msで、75ms閾値を満たした。
 - Guard corpusはattack 155件・独立seed 31件、benign 125件・独立seed 25件で、見逃し・category不一致・deny・approvalはいずれも0件だった。
 - DuckDuckGo canaryは2件、Brave canaryは3件を取得した。
 - `actionlint`、production / development audit、packaged ESM / CommonJS / type / core-only consumer、`publint`、Are The Types Wrongが成功した。
