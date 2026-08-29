@@ -5,6 +5,20 @@ export interface Deadline {
   signal(external?: AbortSignal): AbortSignal;
 }
 
+function timeoutSignal(timeoutMs: number): AbortSignal {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(
+      new DOMException(
+        "The operation was aborted due to timeout",
+        "TimeoutError",
+      ),
+    );
+  }, timeoutMs);
+  timer.unref();
+  return controller.signal;
+}
+
 export function createDeadline(timeoutMs: number): Deadline {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new LlmFetchError("INVALID_INPUT", "timeoutMs must be greater than zero.");
@@ -17,10 +31,10 @@ export function createDeadline(timeoutMs: number): Deadline {
     },
     signal(external?: AbortSignal) {
       const remaining = Math.max(1, Math.ceil(monotonicDeadline - performance.now()));
-      const timeoutSignal = AbortSignal.timeout(remaining);
+      const deadlineSignal = timeoutSignal(remaining);
       return external
-        ? AbortSignal.any([external, timeoutSignal])
-        : timeoutSignal;
+        ? AbortSignal.any([external, deadlineSignal])
+        : deadlineSignal;
     },
   };
 }

@@ -219,8 +219,11 @@ export async function createPinnedProxy(
         request.headers["transfer-encoding"] !== undefined ||
         (contentLength !== undefined && contentLength !== "0")
       ) {
+        const socket = request.socket;
         response.writeHead(400, { connection: "close" });
-        response.end();
+        response.end(() => {
+          socket.end();
+        });
         return;
       }
       const rawUrl = request.url ?? "";

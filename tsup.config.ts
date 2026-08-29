@@ -17,7 +17,7 @@ export default defineConfig({
   clean: true,
   splitting: false,
   treeshake: true,
-  target: "node22",
+  target: "node20",
   external: ["playwright-core"],
   define: {
     __LLM_FETCH_VERSION__: JSON.stringify(packageVersion),
