@@ -6,6 +6,7 @@ import type {
 
 export interface GuardCorpusCase {
   readonly name: string;
+  readonly seedName: string;
   readonly category?: string;
   readonly expectedFindingCategory?: SecurityFindingCategory;
   readonly body: string;

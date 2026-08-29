@@ -7,7 +7,7 @@
 - 検索Provider: DuckDuckGo、Brave、Custom
 - 本文取得: 標準はHTTP/HTTPSのみ。Playwright / Chromiumは任意subpathとして追加済み
 - 実装言語: TypeScript
-- 実行環境: Node.js 22以上
+- 実行環境: Node.js 20.19以上、またはBun 1.3.14以上
 - 外部常駐サービス: 不要
 - Python、Docker、SearXNG、Puppeteer: 使用しない
 - Playwright: コアから分離した任意subpathでのみ使用し、HTTP-firstを維持する
@@ -673,7 +673,7 @@ npm install llm-fetch @playwright/browser-chromium
 ### Phase 0: ベースラインとscaffold
 
 - package.json、TypeScript、tsup、Vitest、ESLintを設定
-- Node.js 22 / 24のCI matrixを用意
+- Node.js 20.19 / 22 / 24とBun 1.3.14 / 1.4のCI matrixを用意
 - `nextjs-template`の現行検索・本文取得をベースラインとして記録
 - `npm pack`した成果物をESM/CJSのfixtureアプリから読み込むテストを作成
 
@@ -926,7 +926,7 @@ npm install llm-fetch @playwright/browser-chromium
 | browser同時実行                       | 既定2 context、上限8、queue上限を強制 |
 | HTTPで本文十分な`auto`取得            | browser launch 0回                    |
 
-ベンチマークはNode.js 22と24で実行し、CIでは直近基準値から20%以上悪化した場合に検知する。共有CIの揺らぎを考慮し、初期段階では警告、基準が安定した後にhard failへ変更する。Context Guardは本文抽出と同じDOMを共有し、正規化済み文字列をsegment単位で一度だけ生成する。
+ベンチマークはNode.js 24で実行し、CIでは固定した絶対閾値を超えた場合にhard failする。通常の機能検証はNode.js 20.19 / 22 / 24とBun 1.3.14 / 1.4で実行する。Context Guardは本文抽出と同じDOMを共有し、正規化済み文字列をsegment単位で一度だけ生成する。
 
 ## 14. ライセンスと利用条件
 
@@ -1025,7 +1025,7 @@ v0.1では機能数より、検索・取得の失敗理由が明確で、ブラ�
 - Provider単位のrate limit / challenge cooldownと、client全体の検索deadline
 - `render: "auto"`はPlaywright/Chromiumが存在する場合だけ動的shellから切替し、不在時は元の`CONTENT_INSUFFICIENT`を維持
 - 実Chromiumで`render: "always"`によるExample Domain取得と、page側DOM API改ざん下でもisolated worldによるcomputed-hidden分類・返却抑止を確認
-- Node.js 22 / 24のcore CIと、任意Chromium integrationを分離したGitHub Actions
+- Node.js 20.19 / 22 / 24とBun 1.3.14 / 1.4のcore CI、およびChromium integrationを分離したGitHub Actions
 - `nextjs-template`の専用branchでtarballを導入し、DuckDuckGo実検索、Playwright未構成時のHTTP維持、CSRページの実Chromium自動切替を3件のE2Eで確認
 - 同一ホストから特殊文字と日本語を含むqueryでも署名付きDuckDuckGo経路が2リクエストともHTTP 200、2.121秒、3結果で完了することを確認
 - DuckDuckGo signed Web parserは20結果で平均約0.455 ms。重複URL、challenge語の正常結果、重複署名parameter、challenge/rate-limit優先度、外部redirect、response-size metadataを回帰テスト済み

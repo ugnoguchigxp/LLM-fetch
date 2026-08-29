@@ -581,9 +581,8 @@ export function extractHtmlContent(
         scoreDirectCandidate(element);
       }
     }
-    if (bodyCandidate && bestText.length < minCharacters) {
-      scoreDirectCandidate(bodyCandidate);
-    }
+    // Body may contain substantial sibling content outside semantic candidates.
+    if (bodyCandidate) scoreDirectCandidate(bodyCandidate);
   } else {
     const index = buildCandidateTextIndex($, candidateSet);
     for (const element of candidateElements) {

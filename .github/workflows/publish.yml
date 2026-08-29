@@ -40,7 +40,7 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: npm
     permissions:
       contents: read
@@ -60,4 +60,12 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
       - name: Require an explicitly publishable manifest
         run: node -e "const p=require('./package.json');if(p.private)throw new Error('package.json is still private')"
+      - name: Run the DuckDuckGo release canary
+        run: npm run canary:duckduckgo
+      - name: Run the Brave release canary
+        run: node scripts/provider-canary.mjs brave
+        env:
+          BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+      - name: Require current-commit provider canary evidence
+        run: npm run verify:release-report -- --require-canaries
       - run: npm publish --access public --provenance
