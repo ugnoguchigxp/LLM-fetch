@@ -1,4 +1,3 @@
-import { load } from "cheerio";
 import type {
   ContentGuard,
   GuardResult,
@@ -9,15 +8,21 @@ import type {
   SearchHit,
   SearchInput,
   SearchProvider,
+  SearchProviderHit,
   SourceMetadata,
 } from "./contracts.js";
+import { isIP } from "node:net";
 import { LlmFetchError, toLlmFetchError } from "./errors.js";
 import {
   abortReason,
   isAbortSignal,
   waitWithSignal,
 } from "./internal/abort-signal.js";
-import { createDeadline } from "./internal/deadline.js";
+import {
+  createDeadline,
+  throwIfDeadlineElapsed,
+  type Deadline,
+} from "./internal/deadline.js";
 import { InFlightMap } from "./internal/in-flight.js";
 import { LruCache } from "./internal/lru-cache.js";
 import { Semaphore } from "./internal/semaphore.js";
@@ -26,6 +31,7 @@ import {
   extractHtmlContent,
   extractPlainTextContent,
   loadHtml,
+  loadXml,
   type ExtractedContent,
 } from "./retrieval/extract-content.js";
 import {
@@ -40,6 +46,7 @@ import {
   type SafeHttpFetcherOptions,
 } from "./retrieval/http-fetcher.js";
 import { normalizeResultUrl } from "./retrieval/url-normalizer.js";
+import { isPublicIpAddress } from "./retrieval/outbound-policy.js";
 import {
   createInternalBuiltinContextGuard,
   runAdditionalGuard,
@@ -69,7 +76,7 @@ const READABLE_CONTENT_TYPES = new Set([
 ]);
 
 export interface LlmFetchOptions {
-  search: SearchProvider;
+  search?: SearchProvider;
   retrieval?: SafeHttpFetcherOptions;
   contextGuard?: BuiltinContextGuardOptions;
   additionalGuard?: ContentGuard;
@@ -105,6 +112,8 @@ function searchCacheKey(provider: string, input: SearchInput): string {
     input.limit ?? 10,
     input.safeSearch ?? "moderate",
     input.locale ?? "",
+    input.language ?? "",
+    input.region ?? "",
     input.timeRange ?? "",
   ]);
 }
@@ -197,12 +206,46 @@ function normalizeSearchInput(input: SearchInput): SearchInput {
     }
     locale = input.locale.trim();
   }
+  let language: string | undefined;
+  if (input.language !== undefined) {
+    if (
+      typeof input.language !== "string" ||
+      !/^[a-z]{2}$/iu.test(input.language)
+    ) {
+      throw new LlmFetchError(
+        "INVALID_INPUT",
+        "language must be an ISO 639-1 two-letter code.",
+      );
+    }
+    language = input.language.toLowerCase();
+  }
+  let region: string | undefined;
+  if (input.region !== undefined) {
+    if (
+      typeof input.region !== "string" ||
+      !/^[a-z]{2}$/iu.test(input.region)
+    ) {
+      throw new LlmFetchError(
+        "INVALID_INPUT",
+        "region must be an ISO 3166-1 alpha-2 code.",
+      );
+    }
+    region = input.region.toUpperCase();
+  }
+  if (locale !== undefined && (language !== undefined || region !== undefined)) {
+    throw new LlmFetchError(
+      "INVALID_INPUT",
+      "locale cannot be combined with language or region.",
+    );
+  }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.");
   }
   const normalized: SearchInput = { query, limit };
   if (input.safeSearch !== undefined) normalized.safeSearch = input.safeSearch;
   if (locale !== undefined) normalized.locale = locale;
+  if (language !== undefined) normalized.language = language;
+  if (region !== undefined) normalized.region = region;
   if (input.timeRange !== undefined) normalized.timeRange = input.timeRange;
   if (input.signal !== undefined) normalized.signal = input.signal;
   return normalized;
@@ -347,6 +390,8 @@ function normalizeSearchHits(
     if (seen.has(normalizedUrl)) continue;
     seen.add(normalizedUrl);
     const normalizedHit: SearchHit = {
+      trust: "untrusted",
+      tainted: true,
       provider: normalizeExternalText(hit.provider),
       rank: hits.length + 1,
       title: normalizeExternalText(hit.title),
@@ -424,6 +469,13 @@ function validateFetchResult(
   const expectedRequestedUrl = normalizeResultUrl(requestedUrl);
   const finalUrl = typeof result.finalUrl === "string" ? result.finalUrl : "";
   const normalizedFinalUrl = finalUrl ? normalizeResultUrl(finalUrl) : null;
+  const parsedFinalUrl = normalizedFinalUrl
+    ? new URL(normalizedFinalUrl)
+    : undefined;
+  const finalHostname = parsedFinalUrl?.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.$/u, "");
   const contentType =
     typeof result.contentType === "string"
       ? result.contentType.trim().toLowerCase()
@@ -433,6 +485,16 @@ function validateFetchResult(
     normalizedRequestedUrl !== expectedRequestedUrl ||
     resultRequestedUrl.length > 2_048 ||
     !normalizedFinalUrl ||
+    !parsedFinalUrl ||
+    (parsedFinalUrl.port !== "" &&
+      parsedFinalUrl.port !== (parsedFinalUrl.protocol === "https:" ? "443" : "80")) ||
+    !finalHostname ||
+    finalHostname === "localhost" ||
+    finalHostname.endsWith(".localhost") ||
+    finalHostname.endsWith(".local") ||
+    finalHostname === "home.arpa" ||
+    finalHostname.endsWith(".home.arpa") ||
+    (isIP(finalHostname) !== 0 && !isPublicIpAddress(finalHostname)) ||
     finalUrl.length > 2_048 ||
     !Number.isInteger(result.status) ||
     (result.status as number) < 200 ||
@@ -469,7 +531,7 @@ function validateFetchResult(
       },
     );
   }
-  const headers: Record<string, string> = {};
+  const headers = Object.create(null) as Record<string, string>;
   let headerCount = 0;
   let headerLength = 0;
   for (const [name, headerValue] of Object.entries(result.headers)) {
@@ -480,10 +542,12 @@ function validateFetchResult(
       typeof headerValue !== "string" ||
       headerCount > 100 ||
       headerLength > 64 * 1024 ||
+      !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u.test(name) ||
       name.length > 100 ||
       headerValue.length > 16_384 ||
       hasControlCharacters(name) ||
-      /[\r\n]/u.test(headerValue)
+      /[\r\n]/u.test(headerValue) ||
+      Object.hasOwn(headers, name.toLowerCase())
     ) {
       throw new LlmFetchError(
         "UPSTREAM_HTTP",
@@ -494,6 +558,18 @@ function validateFetchResult(
       );
     }
     headers[name.toLowerCase()] = headerValue;
+  }
+  const headerContentType = headers["content-type"];
+  const headerMediaType = headerContentType
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (headerContentType !== undefined && headerMediaType !== contentType) {
+    throw new LlmFetchError(
+      "UPSTREAM_HTTP",
+      "Fetcher returned a content-type header that conflicts with its response metadata.",
+      { url: requestedUrl },
+    );
   }
   if (!READABLE_CONTENT_TYPES.has(contentType)) {
     throw new LlmFetchError(
@@ -563,15 +639,19 @@ function documentWithSource(
 }
 
 export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
-  if (!options || typeof options !== "object" || !options.search) {
-    throw new LlmFetchError("CONFIG_MISSING", "A search provider is required.");
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new LlmFetchError("INVALID_INPUT", "Client options must be an object.");
   }
   if (
-    typeof options.search.name !== "string" ||
-    !options.search.name.trim() ||
-    options.search.name.length > 500 ||
-    hasControlCharacters(options.search.name) ||
-    typeof options.search.search !== "function"
+    options.search !== undefined &&
+    (!options.search ||
+      typeof options.search !== "object" ||
+      Array.isArray(options.search) ||
+      typeof options.search.name !== "string" ||
+      !options.search.name.trim() ||
+      options.search.name.length > 500 ||
+      hasControlCharacters(options.search.name) ||
+      typeof options.search.search !== "function")
   ) {
     throw new LlmFetchError("INVALID_INPUT", "The search provider is invalid.");
   }
@@ -587,6 +667,21 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
 
   if (options.fetcher !== undefined && typeof options.fetcher !== "function") {
     throw new LlmFetchError("INVALID_INPUT", "fetcher must be a function.");
+  }
+  const allowedContentTypes = options.retrieval?.allowedContentTypes;
+  if (
+    allowedContentTypes !== undefined &&
+    (!Array.isArray(allowedContentTypes) ||
+      allowedContentTypes.some(
+        (contentType) =>
+          typeof contentType !== "string" ||
+          !READABLE_CONTENT_TYPES.has(contentType.trim().toLowerCase()),
+      ))
+  ) {
+    throw new LlmFetchError(
+      "INVALID_INPUT",
+      "retrieval.allowedContentTypes contains a type the client cannot extract.",
+    );
   }
   if (options.browser !== undefined) {
     if (
@@ -684,6 +779,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     options.browser?.defaultRender ?? (browserRetriever ? "auto" : "never");
   const builtinGuard = createInternalBuiltinContextGuard(options.contextGuard);
   const additionalGuard = options.additionalGuard;
+  const searchProvider = options.search;
   const searchCache = new LruCache<SearchHit[]>(cacheEnabled ? maxEntries : 0);
   const documentCache = new LruCache<CachedDocument>(
     cacheEnabled ? maxEntries : 0,
@@ -723,9 +819,15 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
 
   async function search(input: SearchInput): Promise<SearchHit[]> {
     assertOpen();
+    if (!searchProvider) {
+      throw new LlmFetchError(
+        "CONFIG_MISSING",
+        "A search provider is required for search operations.",
+      );
+    }
     const normalizedInput = normalizeSearchInput(input);
     normalizedInput.signal?.throwIfAborted();
-    const key = searchCacheKey(options.search.name, normalizedInput);
+    const key = searchCacheKey(searchProvider.name, normalizedInput);
     const cached = searchCache.get(key);
     if (cached) return cloneHits(cached);
 
@@ -733,10 +835,10 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       const deadline = createDeadline(searchTimeoutMs);
       const signal = deadline.signal(sharedSignal);
       signal.throwIfAborted();
-      let rawResult: SearchHit[];
+      let rawResult: SearchProviderHit[];
       try {
         rawResult = await waitWithSignal(
-          options.search.search({
+          searchProvider.search({
             ...normalizedInput,
             signal,
           }),
@@ -751,7 +853,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         throw toLlmFetchError(error, {
           code: "UPSTREAM_HTTP",
           message: "Search provider failed.",
-          provider: options.search.name,
+          provider: searchProvider.name,
         });
       }
       try {
@@ -764,7 +866,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       }
       const result = normalizeSearchHits(
         rawResult,
-        options.search.name,
+        searchProvider.name,
         normalizedInput.limit ?? 10,
       );
       searchCache.set(key, cloneHits(result), searchTtlMs);
@@ -916,28 +1018,45 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     input: ReadInput,
     normalizedUrl: string,
     fetched: ContentRetrievalResult,
+    deadline: Deadline,
   ): Promise<CachedDocument> {
     input.signal?.throwIfAborted();
+    throwIfDeadlineElapsed(deadline);
     const fetchedAt = new Date().toISOString();
     const source = sourceMetadata(input, fetched.finalUrl, fetchedAt);
     const contentTypeHeader =
       fetched.headers["content-type"] ?? fetched.contentType;
     const decoded = decodeBody(fetched.body, contentTypeHeader);
+    throwIfDeadlineElapsed(deadline);
     const requestedUse = input.requestedUse ?? "answer_with_citation";
     const referenceSegments: ContentSegment[] = [
-      { location: "attribute", text: normalizedUrl },
-      { location: "attribute", text: fetched.finalUrl },
+      {
+        location: "attribute",
+        text: normalizedUrl,
+        truncated: false,
+        originalLength: normalizedUrl.length,
+      },
+      {
+        location: "attribute",
+        text: fetched.finalUrl,
+        truncated: false,
+        originalLength: fetched.finalUrl.length,
+      },
     ];
     if (input.source?.provider) {
       referenceSegments.push({
         location: "attribute",
         text: input.source.provider,
+        truncated: false,
+        originalLength: input.source.provider.length,
       });
     }
     if (input.source?.snippet) {
       referenceSegments.push({
         location: "attribute",
         text: input.source.snippet,
+        truncated: false,
+        originalLength: input.source.snippet.length,
       });
     }
 
@@ -954,15 +1073,19 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       fetched.contentType === "application/xhtml+xml"
     ) {
       const $ = loadHtml(decoded);
+      throwIfDeadlineElapsed(deadline);
       const likelyDynamic =
         fetched.fetchMethod === "http" && isLikelyDynamicHtml($, decoded);
+      throwIfDeadlineElapsed(deadline);
       const prepared = builtinGuard.prepareHtml($, decoded);
+      throwIfDeadlineElapsed(deadline);
       const extractOptions =
         input.maxCharacters === undefined
           ? {}
           : { maxCharacters: input.maxCharacters };
       try {
         extracted = extractHtmlContent($, fetched.finalUrl, extractOptions);
+        throwIfDeadlineElapsed(deadline);
         if (likelyDynamic && extracted.characterCount < 500) {
           throw new LlmFetchError(
             "CONTENT_INSUFFICIENT",
@@ -985,12 +1108,21 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
           : $("body").text(),
         additionalSegments: prepared.segments,
         requestedUse,
+        truncated: prepared.truncated,
+        truncationReasons:
+          prepared.omittedSegments > 0
+            ? [
+                `${prepared.omittedSegments} content segment(s) were omitted by the collection limit.`,
+              ]
+            : [],
       });
+      throwIfDeadlineElapsed(deadline);
     } else if (
       fetched.contentType === "application/xml" ||
       fetched.contentType === "text/xml"
     ) {
-      const $ = load(decoded, { xmlMode: true });
+      const $ = loadXml(decoded);
+      throwIfDeadlineElapsed(deadline);
       const visibleText = $.root().text();
       const extractOptions =
         input.maxCharacters === undefined
@@ -1005,6 +1137,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         visibleText: extracted.text,
         requestedUse,
       });
+      throwIfDeadlineElapsed(deadline);
     } else {
       const extractOptions =
         input.maxCharacters === undefined
@@ -1019,6 +1152,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         visibleText: extracted.text,
         requestedUse,
       });
+      throwIfDeadlineElapsed(deadline);
     }
 
     let builtinResult = mergeGuardResults([referenceResult, contentResult]);
@@ -1033,6 +1167,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       };
     }
     const extraResult = await inspectAdditional(input, fetched, source);
+    throwIfDeadlineElapsed(deadline);
     const guardResult = extraResult
       ? mergeGuardResults([builtinResult, extraResult])
       : builtinResult;
@@ -1044,7 +1179,13 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       throw new LlmFetchError(
         "GUARD_DENIED",
         "Retrieved content was withheld by the context guard.",
-        { url: fetched.finalUrl },
+        {
+          url: fetched.finalUrl,
+          guardDecision: guardResult.decision,
+          warningCategories: guardResult.findings
+            .filter((finding) => finding.category !== "benign_mention")
+            .map((finding) => finding.category),
+        },
       );
     }
     if (extractionError) throw extractionError;
@@ -1110,7 +1251,10 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     }
   }
 
-  async function readUncached(input: ReadInput): Promise<CachedDocument> {
+  async function readUncached(
+    input: ReadInput,
+    deadline: Deadline,
+  ): Promise<CachedDocument> {
     input.signal?.throwIfAborted();
     const normalizedUrl = normalizeResultUrl(input.url);
     if (!normalizedUrl) {
@@ -1141,6 +1285,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
           normalizedUrl,
           input.signal,
         ),
+        deadline,
       );
     }
 
@@ -1151,7 +1296,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       input.signal,
     );
     try {
-      return await processFetched(input, normalizedUrl, fetched);
+      return await processFetched(input, normalizedUrl, fetched, deadline);
     } catch (error) {
       if (
         render !== "auto" ||
@@ -1171,6 +1316,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
           normalizedUrl,
           input.signal,
         ),
+        deadline,
       );
     }
   }
@@ -1194,10 +1340,13 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       const deadline = createDeadline(readTimeoutMs);
       const signal = deadline.signal(sharedSignal);
       try {
-        const result = await readUncached({
-          ...normalizedInput,
-          signal,
-        });
+        const result = await readUncached(
+          {
+            ...normalizedInput,
+            signal,
+          },
+          deadline,
+        );
         signal.throwIfAborted();
         documentCache.set(key, result, documentTtlMs);
         return result;
@@ -1209,7 +1358,12 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
             error,
           );
         }
-        throw error;
+        if (error instanceof LlmFetchError) throw error;
+        throw toLlmFetchError(error, {
+          code: "CONTENT_INSUFFICIENT",
+          message: "Retrieved content could not be processed safely.",
+          url: normalizedInput.url,
+        });
       }
     };
     const document = await readInflight.run(
@@ -1228,6 +1382,14 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     const normalizedSearch = normalizeSearchInput(input);
     const concurrency = input.concurrency ?? 4;
     integerInRange(concurrency, "concurrency", 1, 16);
+    const perHostConcurrency =
+      input.perHostConcurrency ?? Math.min(2, concurrency);
+    integerInRange(
+      perHostConcurrency,
+      "perHostConcurrency",
+      1,
+      concurrency,
+    );
     const maxCharactersPerDocument =
       input.maxCharactersPerDocument === undefined
         ? undefined
@@ -1248,14 +1410,38 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     const signal = deadline.signal(normalizedSearch.signal);
     try {
       const hits = await search({ ...normalizedSearch, signal });
-      const semaphore = new Semaphore(concurrency);
       const documents: RetrievedDocument[] = [];
       const failures: SearchAndReadResult["failures"] = [];
+      const hostSemaphores = new Map<string, Semaphore>();
+      let nextIndex = 0;
+      let timedOut = false;
 
-      await Promise.all(
-        hits.map((hit) =>
-          semaphore.run(async () => {
-            try {
+      const worker = async (): Promise<void> => {
+        while (nextIndex < hits.length) {
+          if (signal.aborted) {
+            if (normalizedSearch.signal?.aborted) {
+              throw abortReason(normalizedSearch.signal);
+            }
+            timedOut = true;
+            return;
+          }
+          const index = nextIndex;
+          nextIndex += 1;
+          const hit = hits[index];
+          if (!hit) return;
+          const hostname = new URL(hit.url).hostname
+            .toLowerCase()
+            .replace(/\.$/u, "");
+          let hostSemaphore = hostSemaphores.get(hostname);
+          if (!hostSemaphore) {
+            hostSemaphore = new Semaphore(perHostConcurrency);
+            hostSemaphores.set(hostname, hostSemaphore);
+          }
+          let readStarted = false;
+          try {
+            await hostSemaphore.run(async () => {
+              if (signal.aborted) throw abortReason(signal);
+              readStarted = true;
               const readInput: ReadInput = {
                 url: hit.url,
                 signal,
@@ -1272,26 +1458,64 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
               if (requestedUse !== undefined) {
                 readInput.requestedUse = requestedUse;
               }
-              if (input.render !== undefined) {
-                readInput.render = input.render;
-              }
-              const document = await read(readInput);
-              documents.push(document);
-            } catch (error) {
-              if (signal.aborted) throw abortReason(signal);
-              if (closed) assertOpen();
+              if (input.render !== undefined) readInput.render = input.render;
+              documents.push(await read(readInput));
+            });
+          } catch (error) {
+            if (normalizedSearch.signal?.aborted) {
+              throw abortReason(normalizedSearch.signal);
+            }
+            if (signal.aborted && isTimeoutReason(signal.reason)) {
+              timedOut = true;
               failures.push({
                 url: hit.url,
-                error: toLlmFetchError(error, {
-                  message: "Failed to retrieve search result.",
-                  url: hit.url,
-                }),
+                kind: readStarted ? "overall_timeout" : "not_started",
+                error: timeoutError(
+                  readStarted
+                    ? "Search and read exceeded its deadline while retrieving this result."
+                    : "The result was not started before the overall deadline.",
+                  hit.url,
+                  error,
+                ),
               });
+              return;
             }
-          }),
+            if (closed) assertOpen();
+            const normalizedError = toLlmFetchError(error, {
+              message: "Failed to retrieve search result.",
+              url: hit.url,
+            });
+            failures.push({
+              url: hit.url,
+              kind:
+                normalizedError.code === "TIMEOUT"
+                  ? "page_timeout"
+                  : "page_failure",
+              error: normalizedError,
+            });
+          }
+        }
+      };
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(concurrency, hits.length) },
+          async () => worker(),
         ),
       );
-      signal.throwIfAborted();
+      if (signal.aborted && !normalizedSearch.signal?.aborted) timedOut = true;
+      if (timedOut) {
+        for (const hit of hits.slice(nextIndex)) {
+          failures.push({
+            url: hit.url,
+            kind: "not_started",
+            error: timeoutError(
+              "The result was not started before the overall deadline.",
+              hit.url,
+            ),
+          });
+        }
+      }
       documents.sort((a, b) => (a.source?.rank ?? 0) - (b.source?.rank ?? 0));
       const rankByUrl = new Map(hits.map((hit) => [hit.url, hit.rank]));
       failures.sort(
@@ -1302,6 +1526,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         hits,
         documents,
         failures,
+        timedOut,
         durationMs: performance.now() - startedAt,
       };
     } catch (error) {
@@ -1323,7 +1548,10 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     read,
     searchAndRead,
     toolset() {
-      return createToolset({ search, read, inspectSearchResults });
+      return createToolset(
+        { search, read, inspectSearchResults },
+        { search: searchProvider !== undefined },
+      );
     },
     close() {
       closePromise ??= (async () => {

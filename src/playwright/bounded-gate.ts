@@ -58,16 +58,19 @@ export class BoundedGate {
       }
       this.#queue.push(waiter);
     });
-    this.#active += 1;
   }
 
   #release(): void {
-    this.#active -= 1;
     const waiter = this.#queue.shift();
-    if (!waiter) return;
-    if (waiter.signal && waiter.onAbort) {
-      waiter.signal.removeEventListener("abort", waiter.onAbort);
+    if (waiter) {
+      if (waiter.signal && waiter.onAbort) {
+        waiter.signal.removeEventListener("abort", waiter.onAbort);
+      }
+      // Keep the slot occupied while handing it to the waiter. Releasing it
+      // first would allow a new caller to overtake the queued operation.
+      waiter.resolve();
+      return;
     }
-    waiter.resolve();
+    this.#active -= 1;
   }
 }

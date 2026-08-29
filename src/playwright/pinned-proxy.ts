@@ -1,6 +1,7 @@
 import http, {
   type IncomingHttpHeaders,
   type IncomingMessage,
+  type ClientRequest,
   type ServerResponse,
 } from "node:http";
 import net, { type Socket } from "node:net";
@@ -40,6 +41,21 @@ export interface PinnedProxy {
   close(): Promise<void>;
 }
 
+type ProxyHttpRequest = (
+  options: http.RequestOptions,
+  callback: (response: IncomingMessage) => void,
+) => ClientRequest;
+
+let proxyHttpRequest: ProxyHttpRequest = (options, callback) =>
+  http.request(options, callback);
+
+/** Internal test seam; not exported by the package subpath. */
+export function setPinnedProxyHttpRequestForTesting(
+  request?: ProxyHttpRequest,
+): void {
+  proxyHttpRequest = request ?? ((options, callback) => http.request(options, callback));
+}
+
 function proxyAuthorization(username: string, password: string): string {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
@@ -61,7 +77,7 @@ function publicHeaders(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   const blocked = new Set([...HOP_BY_HOP_HEADERS, ...connectionTokens]);
-  const result: Record<string, string | string[]> = {};
+  const result = Object.create(null) as Record<string, string | string[]>;
   let count = 0;
   let totalLength = 0;
   for (const [rawName, rawValue] of Object.entries(headers)) {
@@ -226,7 +242,7 @@ export async function createPinnedProxy(
       const pinnedAddress = firstAddress(resolved.addresses);
       const headers = publicHeaders(request.headers);
       headers.host = resolved.url.host;
-      const upstream = http.request(
+      const upstream = proxyHttpRequest(
         {
           host: pinnedAddress.address,
           family: pinnedAddress.family,

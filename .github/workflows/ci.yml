@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -11,6 +15,7 @@ jobs:
   core:
     name: Core / Node ${{ matrix.node }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -23,11 +28,28 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+      - run: npm run bench:ci
+        if: matrix.node == 24
+      - run: npm run verify:release-report
       - run: npm audit --omit=dev
 
-  playwright:
-    name: Optional Playwright integration
+  packed-consumer-windows:
+    name: Packed consumer / Windows / Node 22
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:package
+
+  development-audit:
+    name: Development dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -35,7 +57,22 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright-core install --with-deps --only-shell chromium
+      - run: npm audit
+
+  playwright:
+    name: Chromium sandbox integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --user 1001:1001 --ipc=host
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - run: npx vitest run test/playwright/integration.test.ts
         env:
           LLM_FETCH_PLAYWRIGHT_INTEGRATION: "1"

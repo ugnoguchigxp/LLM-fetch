@@ -24,4 +24,11 @@ describe("dynamic content detection", () => {
 
     expect(isLikelyDynamicHtml(load(html), html)).toBe(true);
   });
+
+  it("handles a large single server-rendered text node with bounded sampling", () => {
+    const html = `<html><body><div id="root">${"content ".repeat(
+      200_000,
+    )}</div><script type="module" src="/app.js"></script></body></html>`;
+    expect(isLikelyDynamicHtml(load(html), html)).toBe(false);
+  });
 });

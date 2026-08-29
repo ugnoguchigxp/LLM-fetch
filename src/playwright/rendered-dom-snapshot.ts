@@ -26,10 +26,18 @@ function collectRenderedDomSnapshot(options: {
   const root = document.documentElement;
   if (!root) return { html: "", nodeCount: 0, exceeded: false };
   const originalBody = document.body;
-  const originalElements = Array.from(root.querySelectorAll("*"));
-  const allNodes = originalElements.length + 1;
-  if (allNodes > maxDomNodes) {
-    return { html: "", nodeCount: allNodes, exceeded: true };
+  const originalElements: Element[] = [];
+  let allNodes = 1;
+  const elementWalker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_ELEMENT,
+  );
+  while (elementWalker.nextNode()) {
+    allNodes += 1;
+    if (allNodes > maxDomNodes) {
+      return { html: "", nodeCount: allNodes, exceeded: true };
+    }
+    originalElements.push(elementWalker.currentNode as Element);
   }
 
   let estimatedHtmlCharacters = 32;
@@ -67,6 +75,10 @@ function collectRenderedDomSnapshot(options: {
     NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
   );
   while (textWalker.nextNode()) {
+    allNodes += 1;
+    if (allNodes > maxDomNodes) {
+      return { html: "", nodeCount: allNodes, exceeded: true };
+    }
     if (!addEscapedLength(textWalker.currentNode.nodeValue ?? "", false)) {
       return { html: "", nodeCount: allNodes, exceeded: true };
     }

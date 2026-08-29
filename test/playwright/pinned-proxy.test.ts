@@ -1,8 +1,10 @@
 import net from "node:net";
+import http from "node:http";
 import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createPinnedProxy,
+  setPinnedProxyHttpRequestForTesting,
   type PinnedProxy,
 } from "../../src/playwright/pinned-proxy.js";
 
@@ -10,6 +12,7 @@ const proxies: PinnedProxy[] = [];
 
 afterEach(async () => {
   await Promise.all(proxies.splice(0).map((proxy) => proxy.close()));
+  setPinnedProxyHttpRequestForTesting();
 });
 
 function connectRequest(
@@ -29,6 +32,46 @@ function connectRequest(
 }
 
 describe("Playwright pinned proxy", () => {
+  it("forwards an authenticated bounded HTTP GET to the pinned address", async () => {
+    const upstream = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("proxy fixture");
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const upstreamAddress = upstream.address();
+    if (!upstreamAddress || typeof upstreamAddress === "string") {
+      throw new Error("Upstream fixture did not expose a TCP address.");
+    }
+    setPinnedProxyHttpRequestForTesting((options, callback) =>
+      http.request(
+        { ...options, host: "127.0.0.1", port: upstreamAddress.port },
+        callback,
+      ),
+    );
+    const proxy = await createPinnedProxy({
+      connectTimeoutMs: 1_000,
+      maxResponseBytes: 1_000_000,
+      async resolver() {
+        return [{ address: "93.184.216.34", family: 4 }];
+      },
+    });
+    proxies.push(proxy);
+    const authorization = Buffer.from(`${proxy.username}:${proxy.password}`).toString("base64");
+    try {
+      const response = await connectRequest(
+        proxy.server,
+        "GET http://example.com/article HTTP/1.1\r\n" +
+          "Host: example.com\r\n" +
+          "Connection: close\r\n" +
+          `Proxy-Authorization: Basic ${authorization}\r\n\r\n`,
+      );
+      expect(response).toContain("200 OK");
+      expect(response).toContain("proxy fixture");
+    } finally {
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    }
+  });
+
   it("requires proxy authentication", async () => {
     const proxy = await createPinnedProxy({
       connectTimeoutMs: 1_000,

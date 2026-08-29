@@ -4,6 +4,7 @@ import { PassThrough, type Transform } from "node:stream";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { LlmFetchError, toLlmFetchError } from "../errors.js";
 import { abortReason, isAbortSignal, waitWithSignal } from "../internal/abort-signal.js";
+import { PACKAGE_VERSION } from "../internal/version.js";
 import {
   createDeadline,
   throwIfDeadlineElapsed,
@@ -321,8 +322,13 @@ export function createSafeHttpFetcher(options: SafeHttpFetcherOptions = {}) {
   ) {
     throw new LlmFetchError("INVALID_INPUT", "allowedContentTypes contains an invalid media type.");
   }
-  const userAgent = options.userAgent ?? "llm-fetch/0.1";
-  if (!userAgent.trim() || userAgent.length > 512 || hasControlCharacters(userAgent)) {
+  const userAgent = options.userAgent ?? `llm-fetch/${PACKAGE_VERSION}`;
+  if (
+    typeof userAgent !== "string" ||
+    !userAgent.trim() ||
+    userAgent.length > 512 ||
+    hasControlCharacters(userAgent)
+  ) {
     throw new LlmFetchError("INVALID_INPUT", "userAgent contains invalid characters.");
   }
   const headers = {

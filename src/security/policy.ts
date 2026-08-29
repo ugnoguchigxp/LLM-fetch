@@ -25,6 +25,7 @@ export function decideContextPolicy(input: {
   findings: SecurityFinding[];
   requestedUse: RequestedContextUse;
   truncated: boolean;
+  truncationReasons?: readonly string[];
 }): GuardResult {
   const relevant = input.findings.filter((finding) => finding.category !== "benign_mention");
   const strongest = strongestSeverity(relevant);
@@ -60,7 +61,10 @@ export function decideContextPolicy(input: {
     "External stylesheets and computed CSS visibility are not evaluated.",
     "Heuristic rules cannot detect every semantic prompt injection.",
   ];
-  if (input.truncated) limitations.push("Inspection limits truncated part of the content.");
+  if (input.truncated) {
+    limitations.push("Inspection limits truncated part of the content.");
+    limitations.push(...(input.truncationReasons ?? []));
+  }
 
   return {
     findings: input.findings,

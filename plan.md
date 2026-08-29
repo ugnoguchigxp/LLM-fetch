@@ -40,7 +40,7 @@ DuckDuckGoの通常検索preload、HTML版、Lite版はいずれもアプリケ�
 利用側の基本形は次の通りとする。
 
 ```ts
-import { createLlmFetch, duckDuckGo } from "@scope/llm-fetch";
+import { createLlmFetch, duckDuckGo } from "llm-fetch";
 
 const web = createLlmFetch({
   search: duckDuckGo(),
@@ -55,7 +55,7 @@ const result = await web.searchAndRead({
 Braveを利用する場合もクライアント側APIは変えない。
 
 ```ts
-import { brave, createLlmFetch } from "@scope/llm-fetch";
+import { brave, createLlmFetch } from "llm-fetch";
 
 const web = createLlmFetch({
   search: brave({
@@ -72,7 +72,7 @@ import {
   createLlmFetch,
   duckDuckGo,
   fallbackSearch,
-} from "@scope/llm-fetch";
+} from "llm-fetch";
 
 const web = createLlmFetch({
   search: fallbackSearch([
@@ -127,7 +127,7 @@ const web = createLlmFetch({
 ### 任意Playwright拡張に含めるもの
 
 - CSR-only SPAなど、HTTP取得後の本文が不足した場合のChromiumフォールバック
-- `@scope/llm-fetch/playwright` subpath
+- `llm-fetch/playwright` subpath
 - Chromium 1プロセスの遅延起動と再利用
 - ページ取得ごとの非永続BrowserContext
 - `domcontentloaded`後のboundedなDOM安定待ち
@@ -621,7 +621,7 @@ export class LlmFetchError extends Error {
 
 ```json
 {
-  "name": "@scope/llm-fetch",
+  "name": "llm-fetch",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -651,12 +651,12 @@ export class LlmFetchError extends Error {
 }
 ```
 
-TypeScript sourceからtsupでESM/CJSと型定義を生成する。公開物には`src`、fixture、bench、設定ファイルを含めない。Prompt Injection対策を含むHTTP機能は標準entrypointだけで利用できるようにする。Playwrightは`playwright-core`をoptional peer dependencyとし、`@scope/llm-fetch`の通常importやHTTP modeからは読み込まない。peerがない状態で`./playwright`をimportしても即座には失敗させず、最初のbrowser取得時に導入手順を含む`CONFIG_MISSING`を返す。
+TypeScript sourceからtsupでESM/CJSと型定義を生成する。公開物には`src`、fixture、bench、設定ファイルを含めない。Prompt Injection対策を含むHTTP機能は標準entrypointだけで利用できるようにする。Playwrightは`playwright-core`をoptional peer dependencyとし、`llm-fetch`の通常importやHTTP modeからは読み込まない。peerがない状態で`./playwright`をimportしても即座には失敗させず、最初のbrowser取得時に導入手順を含む`CONFIG_MISSING`を返す。
 
 Playwright本体とbrowser binaryをnpm tarballへ同梱しない。browser mode利用者は次を実行する。
 
 ```bash
-npm install @scope/llm-fetch playwright-core
+npm install llm-fetch playwright-core
 npx playwright-core install --only-shell chromium
 ```
 
@@ -665,7 +665,7 @@ CIやコンテナでは必要に応じて`--with-deps`を付ける。Playwright�
 browser downloadまでnpm install 1回で済ませたい場合は、Playwright公式のbrowser helperを使う次の導線も検証・記載する。これはinstall scriptで大容量binaryを取得するため、coreの標準依存にはしない。
 
 ```bash
-npm install @scope/llm-fetch @playwright/browser-chromium
+npm install llm-fetch @playwright/browser-chromium
 ```
 
 ## 11. 実装フェーズ
@@ -809,7 +809,7 @@ npm install @scope/llm-fetch @playwright/browser-chromium
 
 - 共通`ContentRetriever` contractを追加し、既存HTTP fetcherをadapter化
 - `ReadInput.render`と`RetrievedDocument.fetchMethod`を拡張
-- `@scope/llm-fetch/playwright`を別entrypointとしてbuild
+- `llm-fetch/playwright`を別entrypointとしてbuild
 - Chromiumのlazy launch、browser process再利用、fresh context、bounded queueを実装
 - 認証付きDNS-pinning forward proxyとrequest policyを実装
 - rendered DOM snapshotとcomputed-hidden segment分類を実装
@@ -1010,14 +1010,14 @@ v0.1では機能数より、検索・取得の失敗理由が明確で、ブラ�
 
 検証済み:
 
-- lint、型情報を使うPromise規則を含むstrict typecheck、174件の通常unit/security testと、実Chromiumを使う4件の分離integration test
+- lint、型情報を使うPromise規則を含むstrict typecheck、通常unit/security suite、実Chromiumを使う分離integration suite
 - ESM / CommonJS buildと、npm install後の両形式import
 - package exports / ESM / CJS型定義検査（Are the Types Wrongで問題0件）
 - core-only consumerでは`playwright-core`がinstallされず、標準entrypoint、Playwright subpath import、`isAvailable() === false`が成功
 - production/development dependency audit（既知の脆弱性0件）
 - runtime直接依存はCheerio 1件のみ
-- Context Guard 50 KiBは平均約3.3 ms、約1 MiB HTMLのDOM抽出＋guardは平均約53.4 ms
-- ESM/CJS/型定義を含むdistと、npm tarball約76.0 KiB（browser binaryは非同梱）
+- Context Guard 50 KiBと約1 MiB HTMLのDOM抽出＋guardを、p50 / p95 / p99と絶対閾値で`npm run bench:ci`から検証
+- test件数、coverage、tarball sizeの変動値は本文へ固定せず、`npm run verify:release-report`の出力をCI / release記録に使用
 - callerごとのAbortSignalを分離したin-flight dedupe、source-aware document cache、DNS解決を含む総deadline
 - 途中切断、予約IPv6、`home.arpa`、不正resolver/fetcher/guard結果、検査上限到達時のfail-closed
 - ツール出力のprovider/URL/snippet検査と、難読化されたcontrol文字・delimiter・Base64の回帰テスト
@@ -1035,7 +1035,7 @@ v0.1では機能数より、検索・取得の失敗理由が明確で、ブラ�
 
 - frozen実サイトfixtureの拡充
 - live Brave smoke test（API key未設定）
-- npm公開scopeの確定とCI publish設定
+- npm Trusted PublisherとGitHub environment承認者の外部設定
 
 ## 18. Playwright拡張の詳細実装設計（初期版実装済み）
 
@@ -1046,8 +1046,8 @@ Playwrightを既存HTTP fetcherの内部へ直接埋め込まず、共通`Conten
 拡張側の実装コードもTypeScriptだけとし、native addon、Python、WASM、常駐外部serviceを追加しない。Chromium binary自体はPlaywright実行に不可欠な外部runtimeとして分離管理する。
 
 ```ts
-import { createLlmFetch, duckDuckGo } from "@scope/llm-fetch";
-import { playwrightRetriever } from "@scope/llm-fetch/playwright";
+import { createLlmFetch, duckDuckGo } from "llm-fetch";
+import { playwrightRetriever } from "llm-fetch/playwright";
 
 const web = createLlmFetch({
   search: duckDuckGo(),
@@ -1159,7 +1159,7 @@ LLM向け`fetch_content` tool schemaには`render`を公開しない。browser m
 9. README、SECURITY.md、NOTICE、導入手順、container egress例、既知のlimitationsを更新する
 10. `npm pack`したtarballを`nextjs-template`へ導入し、CSR fixtureでHTTP-onlyとbrowser fallbackを比較する
 
-各段階で159件の通常test、lint、strict typecheck、pack後のESM / CJS / TypeScript consumer test、core-only install、audit、package検査を回す。実Chromium jobは通常suiteから分離し、computed visibilityとisolated world境界を確認する。
+各段階で通常test、coverage、lint、strict typecheck、pack後のESM / CJS / NodeNext / bundler consumer test、core-only install、audit、package検査を回す。件数とsizeは`verify:release-report`へ集約する。実Chromium jobは通常suiteから分離し、computed visibilityとisolated world境界を確認する。
 
 初期版では1〜10を実装済み。8は通常suiteから分離した実Chromium integration testと手動smokeまで実装し、browser benchmarkの継続計測はCI追加時に行う。10は`nextjs-template`の`feat/llm-fetch-integration` branchでtarball導入、旧実装置換、CSR E2E、production container smokeまで確認した。
 

@@ -219,6 +219,9 @@ describe("safe HTTP fetcher", () => {
     expect(() => createSafeHttpFetcher({ userAgent: "bad\nagent" })).toThrowError(
       expect.objectContaining({ code: "INVALID_INPUT" }),
     );
+    expect(() =>
+      createSafeHttpFetcher({ userAgent: 123 as never }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
   });
 
   it("does not resolve or request an already aborted operation", async () => {

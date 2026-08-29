@@ -1,4 +1,4 @@
-import { load, type CheerioAPI } from "cheerio";
+import type { CheerioAPI } from "cheerio";
 import type {
   ContentGuard,
   GuardResult,
@@ -8,6 +8,7 @@ import type {
 } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
 import { isAbortSignal } from "../internal/abort-signal.js";
+import { decodeBody, loadHtml } from "../retrieval/extract-content.js";
 import {
   prepareHtmlForExtraction,
   type ContentSegment,
@@ -25,6 +26,8 @@ export interface PreparedGuardInput {
   visibleText: string;
   additionalSegments?: ContentSegment[];
   requestedUse: RequestedContextUse;
+  truncated?: boolean;
+  truncationReasons?: readonly string[];
 }
 
 export interface BuiltinContextGuard {
@@ -224,7 +227,12 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       throw new LlmFetchError("INVALID_INPUT", "requestedUse is invalid.");
     }
     const segments: ContentSegment[] = [
-      { location: "visible", text: input.visibleText },
+      {
+        location: "visible",
+        text: input.visibleText,
+        truncated: false,
+        originalLength: input.visibleText.length,
+      },
       ...(input.additionalSegments ?? []),
     ];
     const scanned = scanSegments(segments, {
@@ -235,7 +243,11 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
     return decideContextPolicy({
       findings: scanned.findings,
       requestedUse: input.requestedUse,
-      truncated: scanned.truncated,
+      truncated: scanned.truncated || input.truncated === true,
+      truncationReasons: [
+        ...scanned.truncationReasons,
+        ...(input.truncationReasons ?? []),
+      ],
     });
   }
 
@@ -268,28 +280,47 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
         "signal must be an AbortSignal.",
       );
     }
-    input.signal?.throwIfAborted();
-    const text = new TextDecoder().decode(input.rawBody);
-    const contentType = input.contentType
-      .split(";", 1)[0]
-      ?.trim()
-      .toLowerCase();
-    if (
-      contentType === "text/html" ||
-      contentType === "application/xhtml+xml"
-    ) {
-      const $ = load(text);
-      const prepared = this.prepareHtml($, text);
+    try {
+      input.signal?.throwIfAborted();
+      const text = decodeBody(input.rawBody, input.contentType);
+      input.signal?.throwIfAborted();
+      const contentType = input.contentType
+        .split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
+      if (
+        contentType === "text/html" ||
+        contentType === "application/xhtml+xml"
+      ) {
+        const $ = loadHtml(text);
+        input.signal?.throwIfAborted();
+        const prepared = this.prepareHtml($, text);
+        input.signal?.throwIfAborted();
+        return this.inspectPrepared({
+          visibleText: $("body").text(),
+          additionalSegments: prepared.segments,
+          requestedUse: input.requestedUse,
+          truncated: prepared.truncated,
+          truncationReasons:
+            prepared.omittedSegments > 0
+              ? [
+                  `${prepared.omittedSegments} content segment(s) were omitted by the collection limit.`,
+                ]
+              : [],
+        });
+      }
       return this.inspectPrepared({
-        visibleText: $("body").text(),
-        additionalSegments: prepared.segments,
+        visibleText: text,
         requestedUse: input.requestedUse,
       });
+    } catch (error) {
+      if (error instanceof LlmFetchError) throw error;
+      throw new LlmFetchError(
+        "CONTENT_INSUFFICIENT",
+        "Untrusted content could not be inspected safely.",
+        { cause: error },
+      );
     }
-    return this.inspectPrepared({
-      visibleText: text,
-      requestedUse: input.requestedUse,
-    });
   }
 }
 

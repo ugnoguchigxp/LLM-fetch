@@ -5,12 +5,19 @@ export interface SearchInput {
   query: string;
   limit?: number;
   safeSearch?: SafeSearch;
+  /** @deprecated Use `language` and `region` for provider-neutral input. */
   locale?: string;
+  /** ISO 639-1 language code, for example `ja` or `en`. */
+  language?: string;
+  /** ISO 3166-1 alpha-2 region code, for example `JP` or `US`. */
+  region?: string;
   timeRange?: TimeRange;
   signal?: AbortSignal;
 }
 
 export interface SearchHit {
+  trust: "untrusted";
+  tainted: true;
   provider: string;
   rank: number;
   title: string;
@@ -19,9 +26,12 @@ export interface SearchHit {
   displayUrl?: string;
 }
 
+export type SearchProviderHit = Omit<SearchHit, "trust" | "tainted"> &
+  Partial<Pick<SearchHit, "trust" | "tainted">>;
+
 export interface SearchProvider {
   readonly name: string;
-  search(input: SearchInput): Promise<SearchHit[]>;
+  search(input: SearchInput): Promise<SearchProviderHit[]>;
 }
 
 export type RequestedContextUse =
@@ -154,17 +164,28 @@ export interface RetrievedDocument {
 export interface SearchAndReadInput extends SearchInput {
   maxCharactersPerDocument?: number;
   concurrency?: number;
+  perHostConcurrency?: number;
   render?: "never" | "auto" | "always";
   requestedUse?: RequestedContextUse;
+}
+
+export type SearchAndReadFailureKind =
+  | "page_failure"
+  | "page_timeout"
+  | "overall_timeout"
+  | "not_started";
+
+export interface SearchAndReadFailure {
+  url: string;
+  kind: SearchAndReadFailureKind;
+  error: LlmFetchError;
 }
 
 export interface SearchAndReadResult {
   hits: SearchHit[];
   documents: RetrievedDocument[];
-  failures: Array<{
-    url: string;
-    error: LlmFetchError;
-  }>;
+  failures: SearchAndReadFailure[];
+  timedOut: boolean;
   durationMs: number;
 }
 import type { LlmFetchError } from "./errors.js";

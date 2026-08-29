@@ -53,4 +53,35 @@ describe("Playwright bounded gate", () => {
     await first;
     await expect(gate.run(async () => "available")).resolves.toBe("available");
   });
+
+  it("transfers capacity to queued work without allowing an arriving task to overtake", async () => {
+    const gate = new BoundedGate(1, 2);
+    let releaseFirst!: () => void;
+    let active = 0;
+    let maximumActive = 0;
+    const enter = async (wait?: Promise<void>) => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      if (wait) await wait;
+      await Promise.resolve();
+      active -= 1;
+    };
+    const firstWait = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = gate.run(async () => enter(firstWait));
+    await Promise.resolve();
+    const queued = gate.run(async () => enter());
+
+    releaseFirst();
+    let arriving!: Promise<void>;
+    queueMicrotask(() => {
+      arriving = gate.run(async () => enter());
+    });
+
+    await first;
+    await queued;
+    await arriving;
+    expect(maximumActive).toBe(1);
+  });
 });

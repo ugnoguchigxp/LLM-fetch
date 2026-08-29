@@ -1,10 +1,9 @@
-import { load } from "cheerio";
 import type { SearchHit } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
-import {
-  deduplicateSearchUrls,
-  normalizeResultUrl,
-} from "../retrieval/url-normalizer.js";
+import { loadHtml } from "../retrieval/extract-content.js";
+import { normalizeResultUrl } from "../retrieval/url-normalizer.js";
+
+const MAX_RESULT_CANDIDATES = 1_000;
 
 const NO_RESULTS_SELECTORS = [
   ".no-results",
@@ -28,6 +27,21 @@ function textOf(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function loadProviderHtml(html: string) {
+  try {
+    return loadHtml(html);
+  } catch (error) {
+    if (error instanceof LlmFetchError && error.provider === undefined) {
+      throw new LlmFetchError(error.code, error.message, {
+        cause: error,
+        provider: "duckduckgo",
+        retryable: error.retryable,
+      });
+    }
+    throw error;
+  }
+}
+
 function assertNotChallenge(body: string): void {
   if (CHALLENGE_PATTERNS.some((pattern) => pattern.test(body))) {
     throw new LlmFetchError(
@@ -39,7 +53,15 @@ function assertNotChallenge(body: string): void {
 }
 
 function decodeHtmlText(value: string): string {
-  return textOf(load(`<body>${value}</body>`)("body").text());
+  return textOf(loadProviderHtml(`<body>${value}</body>`)("body").text());
+}
+
+function tooManyResults(): LlmFetchError {
+  return new LlmFetchError(
+    "RESPONSE_TOO_LARGE",
+    "DuckDuckGo returned too many result candidates.",
+    { provider: "duckduckgo" },
+  );
 }
 
 function parseWebPayload(body: string): unknown[] {
@@ -117,6 +139,8 @@ function toHit(
   const normalizedTitle = textOf(title).slice(0, 1_000);
   if (!url || !normalizedTitle) return null;
   const hit: SearchHit = {
+    trust: "untrusted",
+    tainted: true,
     provider: "duckduckgo",
     rank,
     title: normalizedTitle,
@@ -130,10 +154,13 @@ function toHit(
 
 export function parseDuckDuckGoHtml(html: string, limit: number): SearchHit[] {
   assertNotChallenge(html);
-  const $ = load(html);
+  const $ = loadProviderHtml(html);
   const hits: SearchHit[] = [];
+  const seen = new Set<string>();
+  const candidates = $(".result");
+  if (candidates.length > MAX_RESULT_CANDIDATES) throw tooManyResults();
 
-  $(".result").each((_index, element) => {
+  for (const element of candidates.toArray()) {
     const anchor = $(element).find("a.result__a").first();
     const hit = toHit(
       hits.length + 1,
@@ -142,15 +169,12 @@ export function parseDuckDuckGoHtml(html: string, limit: number): SearchHit[] {
       $(element).find(".result__snippet").first().text(),
       $(element).find(".result__url").first().text(),
     );
-    if (hit) hits.push(hit);
-    return undefined;
-  });
-
-  const deduplicated = deduplicateSearchUrls(hits).map((hit, index) => ({
-    ...hit,
-    rank: index + 1,
-  }));
-  if (deduplicated.length > 0) return deduplicated.slice(0, limit);
+    if (!hit || seen.has(hit.url)) continue;
+    seen.add(hit.url);
+    hits.push({ ...hit, rank: hits.length + 1 });
+    if (hits.length >= limit) break;
+  }
+  if (hits.length > 0) return hits;
 
   const hasNoResults = NO_RESULTS_SELECTORS.some(
     (selector) => $(selector).length > 0,
@@ -166,11 +190,14 @@ export function parseDuckDuckGoHtml(html: string, limit: number): SearchHit[] {
 
 export function parseDuckDuckGoLite(html: string, limit: number): SearchHit[] {
   assertNotChallenge(html);
-  const $ = load(html);
+  const $ = loadProviderHtml(html);
   const hits: SearchHit[] = [];
-  const snippets = $(".result-snippet").toArray();
+  const seen = new Set<string>();
+  const candidates = $("a.result-link, a.result__a");
+  if (candidates.length > MAX_RESULT_CANDIDATES) throw tooManyResults();
+  const snippets = $(".result-snippet").slice(0, MAX_RESULT_CANDIDATES).toArray();
 
-  $("a.result-link, a.result__a").each((index, element) => {
+  for (const [index, element] of candidates.toArray().entries()) {
     const anchor = $(element);
     const row = anchor.closest("tr");
     const snippet = snippets[index];
@@ -183,15 +210,12 @@ export function parseDuckDuckGoLite(html: string, limit: number): SearchHit[] {
       anchor.attr("href") ?? "",
       snippetText,
     );
-    if (hit) hits.push(hit);
-    return undefined;
-  });
-
-  const deduplicated = deduplicateSearchUrls(hits).map((hit, index) => ({
-    ...hit,
-    rank: index + 1,
-  }));
-  if (deduplicated.length > 0) return deduplicated.slice(0, limit);
+    if (!hit || seen.has(hit.url)) continue;
+    seen.add(hit.url);
+    hits.push({ ...hit, rank: hits.length + 1 });
+    if (hits.length >= limit) break;
+  }
+  if (hits.length > 0) return hits;
   if (/no results\.?/i.test($("body").text())) return [];
 
   throw new LlmFetchError(
@@ -215,7 +239,7 @@ export function extractDuckDuckGoPreloadUrl(
     );
   }
 
-  const $ = load(html);
+  const $ = loadProviderHtml(html);
   const source = $("script[src]")
     .toArray()
     .map((element) => $(element).attr("src"))
@@ -266,7 +290,9 @@ export function parseDuckDuckGoWeb(
 ): SearchHit[] {
   assertNotChallenge(body);
   const payload = parseWebPayload(body);
+  if (payload.length > MAX_RESULT_CANDIDATES) throw tooManyResults();
   const hits: SearchHit[] = [];
+  const seen = new Set<string>();
   let invalidResult = false;
 
   for (const candidate of payload) {
@@ -284,6 +310,12 @@ export function parseDuckDuckGoWeb(
       invalidResult = true;
       continue;
     }
+    const normalizedUrl = normalizeResultUrl(raw.u);
+    if (!normalizedUrl) {
+      invalidResult = true;
+      continue;
+    }
+    if (seen.has(normalizedUrl)) continue;
     const hit = toHit(
       hits.length + 1,
       decodeHtmlText(raw.t),
@@ -291,15 +323,16 @@ export function parseDuckDuckGoWeb(
       decodeHtmlText(raw.a),
       typeof raw.i === "string" ? raw.i : undefined,
     );
-    if (hit) hits.push(hit);
-    else invalidResult = true;
+    if (!hit) {
+      invalidResult = true;
+      continue;
+    }
+    seen.add(hit.url);
+    hits.push({ ...hit, rank: hits.length + 1 });
+    if (hits.length >= limit) break;
   }
 
-  const deduplicated = deduplicateSearchUrls(hits).map((hit, index) => ({
-    ...hit,
-    rank: index + 1,
-  }));
-  if (deduplicated.length > 0) return deduplicated.slice(0, limit);
+  if (hits.length > 0) return hits;
   if (!invalidResult) return [];
 
   throw new LlmFetchError(

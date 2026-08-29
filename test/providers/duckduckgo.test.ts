@@ -82,6 +82,22 @@ describe("DuckDuckGo parsers", () => {
     ]);
   });
 
+  it("bounds the number of result candidates before decoding them", () => {
+    const payload = `DDG.pageLayout.load("d", ${JSON.stringify(
+      Array.from({ length: 1_001 }, (_, index) => ({
+        t: `Result ${index}`,
+        a: "description",
+        u: `https://example.com/${index}`,
+      })),
+    )});`;
+    expect(() => parseDuckDuckGoWeb(payload, 20)).toThrowError(
+      expect.objectContaining({
+        code: "RESPONSE_TOO_LARGE",
+        provider: "duckduckgo",
+      }),
+    );
+  });
+
   it("distinguishes no results, challenge, and parser changes", () => {
     expect(
       parseDuckDuckGoHtml("<div class='no-results'>No results.</div>", 5),
@@ -92,6 +108,16 @@ describe("DuckDuckGo parsers", () => {
     expect(() =>
       parseDuckDuckGoHtml("<html><body>unexpected</body></html>", 5),
     ).toThrowError(expect.objectContaining({ code: "PARSE_CHANGED" }));
+  });
+
+  it("rejects deeply nested provider HTML before parsing it", () => {
+    const html = `${"<div>".repeat(600)}result${"</div>".repeat(600)}`;
+    expect(() => parseDuckDuckGoHtml(html, 5)).toThrowError(
+      expect.objectContaining({
+        code: "RESPONSE_TOO_LARGE",
+        provider: "duckduckgo",
+      }),
+    );
   });
 
   it("does not mistake an ordinary CAPTCHA search result for a challenge", () => {
@@ -218,6 +244,49 @@ describe("duckDuckGo provider", () => {
     expect(
       (init.headers as Record<string, string>)["user-agent"],
     ).toContain("Mozilla/5.0");
+  });
+
+  it("maps ISO language and region to the DuckDuckGo region parameter", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(bootstrapHtml("mapping"), {
+          headers: { "content-type": "text/html" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(WEB_RESULTS, {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+    await duckDuckGo({ fetch: fetchMock as unknown as typeof fetch }).search({
+      query: "mapping",
+      language: "ja",
+      region: "JP",
+    });
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(url.searchParams.get("kl")).toBe("jp-jp");
+  });
+
+  it("maps a supported language-only input instead of silently dropping it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(bootstrapHtml("portuguese"), {
+          headers: { "content-type": "text/html" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(WEB_RESULTS, {
+          headers: { "content-type": "application/javascript" },
+        }),
+      );
+    await duckDuckGo({ fetch: fetchMock as unknown as typeof fetch }).search({
+      query: "portuguese",
+      language: "pt",
+    });
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
+    expect(url.searchParams.get("kl")).toBe("pt-pt");
   });
 
   it("falls back through HTML to Lite for a retryable Web response", async () => {
@@ -390,6 +459,21 @@ describe("duckDuckGo provider", () => {
     ).rejects.toMatchObject({
       code: "INVALID_INPUT",
     });
+    await expect(
+      provider.search({ query: "ok", language: "japanese" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      provider.search({ query: "ok", region: "JPN" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      provider.search({ query: "ok", locale: "jp-jp", language: "ja" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      provider.search({ query: "ok", language: "ja", region: "US" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      provider.search({ query: "ok", language: "xx" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

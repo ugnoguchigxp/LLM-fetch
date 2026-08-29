@@ -1,18 +1,37 @@
 {
-  "name": "@scope/llm-fetch",
+  "name": "llm-fetch",
   "version": "0.1.0",
   "private": true,
   "description": "Fast, safe web search and content retrieval for LLM applications",
+  "keywords": [
+    "llm",
+    "web-search",
+    "content-extraction",
+    "prompt-injection",
+    "playwright"
+  ],
+  "author": "ugnoguchigxp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ugnoguchigxp/LLM-fetch.git"
+  },
+  "homepage": "https://github.com/ugnoguchigxp/LLM-fetch#readme",
+  "bugs": {
+    "url": "https://github.com/ugnoguchigxp/LLM-fetch/issues"
+  },
   "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "packageManager": "npm@11.6.4",
   "sideEffects": false,
   "files": [
     "dist",
+    "docs",
     "README.md",
     "README.ja.md",
+    "CHANGELOG.md",
     "LICENSE",
     "NOTICE",
     "SECURITY.md"
@@ -52,26 +71,36 @@
   "scripts": {
     "build": "tsup",
     "bench": "vitest bench --run",
+    "bench:ci": "npm run build && node scripts/benchmark-ci.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src test bench scripts",
     "prepack": "npm run build",
     "prepublishOnly": "npm run verify",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run verify:licenses && npm run verify:package",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run test:coverage && npm run verify:licenses && npm run verify:package && npm run verify:publint && npm run verify:types",
     "verify:licenses": "node scripts/verify-licenses.mjs",
-    "verify:package": "node scripts/verify-package.mjs"
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify:publint": "npm run build && publint",
+    "verify:release-report": "node scripts/release-report.mjs",
+    "verify:types": "attw --pack ."
   },
   "dependencies": {
     "cheerio": "^1.2.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@aws-sdk/client-bedrock-runtime": "^3.1121.0",
     "@eslint/js": "^9.39.4",
     "@types/node": "^24.12.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9.39.4",
     "globals": "^17.7.0",
+    "openai": "^7.8.0",
     "playwright-core": "^1.62.1",
+    "publint": "^0.3.24",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.62.0",

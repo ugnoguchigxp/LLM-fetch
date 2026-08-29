@@ -9,7 +9,68 @@ import type {
 } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
 
-type JsonSchema = Readonly<Record<string, unknown>>;
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+type JsonSchema = Record<string, JsonValue>;
+
+function isJsonObject(value: JsonValue | undefined): value is JsonSchema {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function addNullableType(schema: JsonSchema): JsonSchema {
+  const result = { ...schema };
+  const type = result.type;
+  if (typeof type === "string") {
+    result.type = [type, "null"];
+  } else if (Array.isArray(type)) {
+    result.type = [...new Set([...type, "null"])] as JsonValue[];
+  }
+  if (Array.isArray(result.enum) && !result.enum.includes(null)) {
+    result.enum = [...result.enum, null];
+  }
+  delete result.default;
+  return result;
+}
+
+function openAiStrictSchema(schema: JsonSchema): JsonSchema {
+  const strictify = (value: JsonValue, nullable = false): JsonValue => {
+    if (Array.isArray(value)) return value.map((item) => strictify(item));
+    if (!isJsonObject(value)) return value;
+
+    let result = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, strictify(item)]),
+    ) as JsonSchema;
+    if (result.type === "object" && isJsonObject(result.properties)) {
+      const originalRequired = new Set(
+        Array.isArray(result.required)
+          ? result.required.filter(
+              (item): item is string => typeof item === "string",
+            )
+          : [],
+      );
+      const properties = Object.fromEntries(
+        Object.entries(result.properties).map(([name, property]) => [
+          name,
+          strictify(property, !originalRequired.has(name)),
+        ]),
+      ) as JsonSchema;
+      result = {
+        ...result,
+        properties,
+        required: Object.keys(properties),
+        additionalProperties: false,
+      };
+    }
+    return nullable ? addNullableType(result) : result;
+  };
+
+  return strictify(schema) as JsonSchema;
+}
 
 interface CanonicalTool {
   name: "web_search" | "fetch_content";
@@ -53,13 +114,25 @@ const TOOLS: readonly CanonicalTool[] = [
   },
 ] as const;
 
-export interface OpenAiToolDefinition {
+export interface OpenAiChatCompletionsToolDefinition {
   type: "function";
   function: {
     name: string;
     description: string;
     parameters: JsonSchema;
+    strict: true;
   };
+}
+
+/** @deprecated Use OpenAiChatCompletionsToolDefinition. */
+export type OpenAiToolDefinition = OpenAiChatCompletionsToolDefinition;
+
+export interface OpenAiResponsesToolDefinition {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: JsonSchema;
+  strict: true;
 }
 
 export interface BedrockToolDefinition {
@@ -78,6 +151,8 @@ export interface CompactToolSecurity {
 }
 
 export interface CompactSearchHit {
+  trust: "untrusted";
+  tainted: true;
   provider: string;
   rank: number;
   title: string;
@@ -106,6 +181,9 @@ export type ToolExecutionResult =
     };
 
 export interface LlmFetchToolset {
+  openaiResponsesDefinitions(): OpenAiResponsesToolDefinition[];
+  openaiChatCompletionsDefinitions(): OpenAiChatCompletionsToolDefinition[];
+  /** @deprecated Use openaiChatCompletionsDefinitions(). */
   openaiDefinitions(): OpenAiToolDefinition[];
   bedrockDefinitions(): BedrockToolDefinition[];
   execute(name: string, input: unknown): Promise<ToolExecutionResult>;
@@ -170,7 +248,7 @@ function optionalInteger(
 ): number | undefined {
   if (!Object.hasOwn(input, name)) return undefined;
   const value = input[name];
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (
     !Number.isInteger(value) ||
     (value as number) < minimum ||
@@ -205,20 +283,42 @@ function compactSecurity(
   };
 }
 
-export function createToolset(client: ToolsetClient): LlmFetchToolset {
+export function createToolset(
+  client: ToolsetClient,
+  capabilities: { search: boolean } = { search: true },
+): LlmFetchToolset {
+  const availableTools = capabilities.search
+    ? TOOLS
+    : TOOLS.filter((tool) => tool.name !== "web_search");
+  const chatDefinitions = (): OpenAiChatCompletionsToolDefinition[] =>
+    availableTools.map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: openAiStrictSchema(tool.inputSchema),
+        strict: true,
+      },
+    }));
+
   return {
-    openaiDefinitions() {
-      return TOOLS.map((tool) => ({
+    openaiResponsesDefinitions() {
+      return availableTools.map((tool) => ({
         type: "function",
-        function: {
-          name: tool.name,
-          description: tool.description,
-          parameters: structuredClone(tool.inputSchema),
-        },
+        name: tool.name,
+        description: tool.description,
+        parameters: openAiStrictSchema(tool.inputSchema),
+        strict: true,
       }));
     },
+    openaiChatCompletionsDefinitions() {
+      return chatDefinitions();
+    },
+    openaiDefinitions() {
+      return chatDefinitions();
+    },
     bedrockDefinitions() {
-      return TOOLS.map((tool) => ({
+      return availableTools.map((tool) => ({
         toolSpec: {
           name: tool.name,
           description: tool.description,
@@ -233,6 +333,12 @@ export function createToolset(client: ToolsetClient): LlmFetchToolset {
       const input = objectInput(rawInput);
       switch (name) {
         case "web_search": {
+          if (!capabilities.search) {
+            throw new LlmFetchError(
+              "CONFIG_MISSING",
+              "A search provider is required for web_search.",
+            );
+          }
           assertAllowedFields(input, ["query", "limit"]);
           const query = stringField(input, "query", 400);
           const limit = optionalInteger(input, "limit", 1, 20) ?? 5;
@@ -243,6 +349,8 @@ export function createToolset(client: ToolsetClient): LlmFetchToolset {
             type: "web_search_result",
             security: compactSecurity(inspected.guard),
             hits: inspected.hits.map((hit) => ({
+              trust: "untrusted",
+              tainted: true,
               provider: compactText(hit.provider, 100),
               rank: hit.rank,
               title: compactText(hit.title, 200),

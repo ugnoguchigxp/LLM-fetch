@@ -33,6 +33,8 @@ describe("Brave provider", () => {
       }),
     ).resolves.toEqual([
       {
+        trust: "untrusted",
+        tainted: true,
         provider: "brave",
         rank: 1,
         title: "Example",
@@ -74,12 +76,58 @@ describe("Brave provider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("maps provider-neutral language and region and honors bounded Retry-After", async () => {
+    const successFetch = vi.fn(async () => Response.json({ web: { results: [] } }));
+    const provider = brave({
+      apiKey: "test",
+      fetch: successFetch as unknown as typeof fetch,
+    });
+    await provider.search({ query: "mapping", language: "ja", region: "JP" });
+    const [url] = successFetch.mock.calls[0] as unknown as [URL];
+    expect(url.searchParams.get("search_lang")).toBe("ja");
+    expect(url.searchParams.get("country")).toBe("JP");
+
+    const limited = brave({
+      apiKey: "test",
+      fetch: vi.fn(async () =>
+        new Response("limited", {
+          status: 429,
+          headers: { "retry-after": "999999" },
+        }),
+      ) as unknown as typeof fetch,
+    });
+    await expect(limited.search({ query: "limited" })).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+      cooldownMs: 300_000,
+    });
+  });
+
+  it.each([
+    { query: "ok", language: "japanese" },
+    { query: "ok", region: "JPN" },
+    { query: "ok", locale: "ja-JP", language: "ja" },
+  ])("rejects invalid provider-neutral locale input: %o", async (input) => {
+    const provider = brave({ apiKey: "test", fetch: vi.fn() as never });
+    await expect(provider.search(input)).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+  });
+
   it("validates provider configuration eagerly", () => {
     expect(() => brave({ apiKey: "test", timeoutMs: 0 })).toThrowError(
       expect.objectContaining({ code: "INVALID_INPUT" }),
     );
     expect(() => brave({ apiKey: "test", maxResponseBytes: -1 })).toThrowError(
       expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
+    expect(() => brave(null as never)).toThrowError(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
+    expect(() => brave({ apiKey: 123 as never })).toThrowError(
+      expect.objectContaining({ code: "CONFIG_MISSING" }),
+    );
+    expect(() => brave({ apiKey: "bad\0key" })).toThrowError(
+      expect.objectContaining({ code: "CONFIG_MISSING" }),
     );
   });
 
@@ -92,6 +140,28 @@ describe("Brave provider", () => {
     });
     await expect(provider.search({ query: "test" })).rejects.toMatchObject({
       code: "PARSE_CHANGED",
+    });
+  });
+
+  it("adds provider context to bounded response errors", async () => {
+    const provider = brave({
+      apiKey: "test",
+      maxResponseBytes: 1,
+      fetch: vi.fn(
+        async () =>
+          new Response("too large", {
+            headers: {
+              "content-length": "9",
+              "content-type": "application/json",
+            },
+          }),
+      ) as unknown as typeof fetch,
+    });
+
+    await expect(provider.search({ query: "bounded" })).rejects.toMatchObject({
+      code: "RESPONSE_TOO_LARGE",
+      provider: "brave",
+      retryable: false,
     });
   });
 

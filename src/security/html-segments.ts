@@ -4,11 +4,15 @@ import type { SecurityFindingLocation } from "../contracts.js";
 export interface ContentSegment {
   location: SecurityFindingLocation;
   text: string;
+  truncated: boolean;
+  originalLength: number;
 }
 
 export interface PreparedHtml {
   segments: ContentSegment[];
   excludedSummary: Record<string, number>;
+  truncated: boolean;
+  omittedSegments: number;
 }
 
 const MAX_SEGMENT_TEXT = 64_000;
@@ -23,18 +27,30 @@ const HIDDEN_STYLE_PATTERNS = [
   /(?:^|;)\s*transform\s*:\s*scale(?:x|y)?\s*\(\s*0(?:\.0+)?(?:\s*,\s*0(?:\.0+)?)?\s*\)(?:\s*!important)?\s*(?:;|$)/i,
 ];
 
-function boundedText(text: string): string {
-  return text.replace(/\s+/g, " ").trim().slice(0, MAX_SEGMENT_TEXT);
+function boundedText(text: string): Omit<ContentSegment, "location"> {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const originalLength = normalized.length;
+  if (originalLength <= MAX_SEGMENT_TEXT) {
+    return { text: normalized, truncated: false, originalLength };
+  }
+  const headLength = Math.ceil(MAX_SEGMENT_TEXT / 2);
+  const tailLength = MAX_SEGMENT_TEXT - headLength;
+  return {
+    text: `${normalized.slice(0, headLength)}${normalized.slice(-tailLength)}`,
+    truncated: true,
+    originalLength,
+  };
 }
 
 function appendSegment(
   segments: ContentSegment[],
   location: SecurityFindingLocation,
-  text: string,
-): void {
-  if (text && segments.length < MAX_COLLECTED_SEGMENTS) {
-    segments.push({ location, text });
-  }
+  bounded: Omit<ContentSegment, "location">,
+): boolean {
+  if (!bounded.text) return true;
+  if (segments.length >= MAX_COLLECTED_SEGMENTS) return false;
+  segments.push({ location, ...bounded });
+  return true;
 }
 
 function inlineStyleIsHidden(style: string): boolean {
@@ -64,30 +80,37 @@ export function prepareHtmlForExtraction(
 ): PreparedHtml {
   const segments: ContentSegment[] = [];
   const excludedSummary: Record<string, number> = {};
+  let omittedSegments = 0;
+
+  const collect = (
+    location: SecurityFindingLocation,
+    text: string,
+  ): Omit<ContentSegment, "location"> => {
+    const bounded = boundedText(text);
+    if (!appendSegment(segments, location, bounded)) omittedSegments += 1;
+    return bounded;
+  };
 
   for (const match of rawHtml.matchAll(/<!--([\s\S]*?)-->/g)) {
-    const text = boundedText(match[1] ?? "");
-    appendSegment(segments, "comment", text);
+    collect("comment", match[1] ?? "");
     increment(excludedSummary, "comment");
   }
 
   $("meta[content]").each((_index, element) => {
-    const text = boundedText($(element).attr("content") ?? "");
-    appendSegment(segments, "meta", text);
+    collect("meta", $(element).attr("content") ?? "");
     increment(excludedSummary, "meta");
   });
 
   $("template").each((_index, element) => {
-    const text = boundedText($(element).text());
-    appendSegment(segments, "template", text);
+    collect("template", $(element).text());
     increment(excludedSummary, "template");
   });
 
   $("[aria-label], [title], [alt]").each((_index, element) => {
     for (const attribute of ["aria-label", "title", "alt"] as const) {
-      const text = boundedText($(element).attr(attribute) ?? "");
-      if (!text) continue;
-      appendSegment(segments, "attribute", text);
+      const bounded = boundedText($(element).attr(attribute) ?? "");
+      if (!bounded.text) continue;
+      if (!appendSegment(segments, "attribute", bounded)) omittedSegments += 1;
       increment(excludedSummary, `attribute:${attribute}`);
     }
   });
@@ -101,9 +124,8 @@ export function prepareHtmlForExtraction(
       hiddenParts.push($(child).text());
       $(child).remove();
     });
-    const text = boundedText(hiddenParts.join(" "));
-    appendSegment(segments, "hidden", text);
-    if (text) increment(excludedSummary, "closed-details");
+    const bounded = collect("hidden", hiddenParts.join(" "));
+    if (bounded.text) increment(excludedSummary, "closed-details");
   });
 
   const hiddenElements = $(
@@ -147,18 +169,24 @@ export function prepareHtmlForExtraction(
   for (const element of hiddenElements) {
     const node = $(element);
     if (nestedUnderHidden(element)) continue;
-    const text = boundedText(
+    collect(
+      "hidden",
       node.is("input[type='hidden']")
         ? (node.attr("value") ?? "")
         : node.text(),
     );
-    appendSegment(segments, "hidden", text);
     increment(excludedSummary, "hidden-element");
     node.remove();
   }
 
   $(
-    "script, style, noscript, template, meta, svg, iframe, object, embed",
+    "script, style, noscript, template, svg, iframe, object, embed",
   ).remove();
-  return { segments, excludedSummary };
+  return {
+    segments,
+    excludedSummary,
+    truncated:
+      omittedSegments > 0 || segments.some((segment) => segment.truncated),
+    omittedSegments,
+  };
 }

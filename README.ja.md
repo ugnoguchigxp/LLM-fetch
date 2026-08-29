@@ -7,7 +7,7 @@
 Python、Docker、SearXNG、常駐サービスは不要です。通常のページはHTTPで取得し、JavaScriptで本文を生成するページだけ、任意でPlaywrightへ切り替えられます。
 
 > [!NOTE]
-> 現在は公開準備中です。`@scope/llm-fetch`は仮のパッケージ名で、誤公開を防ぐため`private: true`にしています。npmへ公開する前にscopeを決め、`private`を外してください。
+> 最終パッケージ名は`llm-fetch`です。未完成のcheckoutを誤公開しないよう、明示承認を受けたrelease commitまでは`private: true`を維持します。
 
 ## 動作環境
 
@@ -19,13 +19,13 @@ Python、Docker、SearXNG、常駐サービスは不要です。通常のペー�
 ## インストール
 
 ```sh
-npm install @scope/llm-fetch
+npm install llm-fetch
 ```
 
 ## まず検索して本文を読む
 
 ```ts
-import { createLlmFetch, duckDuckGo } from "@scope/llm-fetch";
+import { createLlmFetch, duckDuckGo } from "llm-fetch";
 
 const web = createLlmFetch({
   search: duckDuckGo(),
@@ -47,7 +47,7 @@ try {
 }
 ```
 
-`searchAndRead()`は、検索に成功したページを並行して取得します。ページ単位の失敗は`failures`へ入り、ほかのページの取得は続行します。検索自体が失敗した場合は例外になります。
+`searchAndRead()`はページを並行取得し、同じhostへの同時接続は既定2件に抑えます（全体の並列数が1なら1件）。ページ単位の失敗は`failures`へ入り、ほかの結果は残ります。検索後に全体期限へ達した場合も、完了済み文書を保持して`timedOut: true`を返し、処理中と未開始のURLを別のfailure kindで示します。呼び出し側の`AbortSignal`と検索自体の失敗は例外になります。
 
 | API | 用途 |
 | --- | --- |
@@ -85,7 +85,7 @@ import {
   createLlmFetch,
   duckDuckGo,
   fallbackSearch,
-} from "@scope/llm-fetch";
+} from "llm-fetch";
 
 const web = createLlmFetch({
   search: fallbackSearch([
@@ -95,7 +95,7 @@ const web = createLlmFetch({
 });
 ```
 
-次のプロバイダーへ進むのは、先のプロバイダーが再試行可能なエラーを返した場合だけです。検索結果が0件だった場合や入力に誤りがある場合は切り替えません。Brave Searchでは`timeRange`を鮮度フィルターへ、`locale`を`search_lang`へ渡します。
+次のプロバイダーへ進むのは、先のプロバイダーが再試行可能なエラーを返した場合だけです。検索結果が0件だった場合や入力に誤りがある場合は切り替えません。言語はISO 639-1の`language`（`ja`、`en`など）、地域はISO 3166-1 alpha-2の`region`（`JP`、`US`など）で指定します。Braveは`search_lang`と`country`へ、DuckDuckGoは地域コードへ変換します。旧`locale`は非推奨で、新しい項目と同時指定できません。
 
 検索語は最大400文字です。検索チェーン全体の既定期限は10秒で、`searchTimeoutMs`で変更できます。DuckDuckGoのbot challengeとDuckDuckGo / Braveのアクセス制限を検知した後は、同じプロセスから短時間に再送しないよう、プロバイダーごとに待機時間を設けます。
 
@@ -115,24 +115,26 @@ const document = await web.read({
 
 `read()`は、アプリケーション内で扱う用途として最大100,000文字を返せます。LLMへ渡す場合は、後述する`toolset()`の短い出力を使ってください。
 
+本文取得だけなら検索プロバイダーは不要です。その場合も`read()`と`fetch_content`は使えますが、`search()`は`CONFIG_MISSING`になり、ツール定義から`web_search`が除かれます。
+
 ## JavaScriptで本文を作るページ
 
 Playwrightは任意機能です。静的HTMLから十分な本文を得られなかった場合だけChromiumを使うには、ブラウザ実行環境を追加します。
 
 ```sh
-npm install @scope/llm-fetch @playwright/browser-chromium
+npm install llm-fetch @playwright/browser-chromium
 ```
 
 ブラウザ本体を自分で管理する場合は、次の構成も使えます。
 
 ```sh
-npm install @scope/llm-fetch playwright-core
+npm install llm-fetch playwright-core
 npx playwright-core install --only-shell chromium
 ```
 
 ```ts
-import { createLlmFetch, duckDuckGo } from "@scope/llm-fetch";
-import { playwrightRetriever } from "@scope/llm-fetch/playwright";
+import { createLlmFetch, duckDuckGo } from "llm-fetch";
+import { playwrightRetriever } from "llm-fetch/playwright";
 
 const web = createLlmFetch({
   search: duckDuckGo(),
@@ -148,11 +150,11 @@ const document = await web.read({
 });
 ```
 
-`render: "auto"`は最初にHTTP取得を試します。本文が不足し、`playwright-core`とChromiumが利用できる場合だけブラウザへ切り替えます。依存パッケージまたはブラウザ本体がなければ切り替えず、元の`CONTENT_INSUFFICIENT`を返します。`render: "always"`はブラウザを明示的に要求する設定なので、実行環境がなければ`CONFIG_MISSING`になります。
+`render: "auto"`は最初にHTTP取得した生HTMLをGuardで検査します。検査を通過した本文が不足し、`playwright-core`とChromiumが利用できる場合だけブラウザへ切り替えます。依存パッケージまたはブラウザ本体がなければ、元の`CONTENT_INSUFFICIENT`を返します。`render: "always"`は二重取得を避けるため、JavaScript実行前の生HTML検査を行いません。secret、認証済み状態、Node.js binding、高権限toolを渡さないでください。
 
 HTTP取得、ブラウザ待ち、ページ移動、本文抽出、Context Guardは、既定15秒の同じ期限を共有します。ブラウザへ切り替わっても残り時間はリセットされません。期限は`readTimeoutMs`で変更できます。
 
-ブラウザプロセスは再利用しますが、ページごとに新しい非永続BrowserContextを作ります。標準設定では、GET以外のリクエスト、サブフレーム、ポップアップ、ダウンロード、WebSocket、Service Worker、プライベートネットワークへの接続、不要な画像・動画・音声・フォントを止めます。表示状態の判定はページ側から上書きされにくいisolated worldで行い、CSSによって隠された内容もContext Guardの検査対象にします。
+ブラウザプロセスは再利用しますが、ページごとに新しい非永続BrowserContextを作ります。標準設定で許可するmethodはGET / HEADだけです。それ以外のmethod、サブフレーム、ポップアップ、ダウンロード、WebSocket、Service Worker、プライベートネットワークへの接続、不要な画像・動画・音声・フォントを止めます。表示状態の判定はisolated worldで行い、CSSによって隠された内容もContext Guardの検査対象にします。
 
 Chromiumのプロセスsandboxは標準で有効です。`externalSandbox: true`は、別のコンテナやsandboxで隔離している場合にだけ使ってください。内蔵の接続制御とDNS pinningプロキシは防御を重ねる仕組みであり、OS単位のネットワークsandboxではありません。実行ホストから社内ネットワークなどへ接続できる環境では、コンテナや外向き通信の制限も併用してください。
 
@@ -161,7 +163,8 @@ Chromiumのプロセスsandboxは標準で有効です。`externalSandbox: true`
 ```ts
 const toolset = web.toolset();
 
-const openaiTools = toolset.openaiDefinitions();
+const responsesTools = toolset.openaiResponsesDefinitions();
+const chatCompletionsTools = toolset.openaiChatCompletionsDefinitions();
 const bedrockTools = toolset.bedrockDefinitions();
 
 const output = await toolset.execute("web_search", {
@@ -174,13 +177,13 @@ OpenAI SDKとAWS SDKは不要です。ツール定義は通常のJSONとして�
 
 `web_search`は既定で5件を返し、外部由来のタイトルと要約を短く制限します。危険度が高いプロンプトインジェクションを含む検索結果は出力しません。`fetch_content`は既定5,000文字、最大20,000文字です。LLMへ返すのは引用用URL、可視本文、取得時刻、打ち切りの有無、短い安全性情報だけです。HTML構造、script、style、イベント属性、非表示内容、生のレスポンス情報、詳細な検査ログは含めません。
 
-低レベルAPIの`search()`が返すタイトルと要約も、外部サイト由来の未信頼データです。アプリケーションのsystem prompt（システム指示）や命令文へ直接連結しないでください。LLMへ渡す場合は、検査と出力制限が入る`toolset()`を使います。
+低レベルAPIの`SearchHit`と`searchAndRead().hits`にも`trust: "untrusted"`、`tainted: true`が付きます。タイトルと要約をsystem promptや命令文へ直接連結しないでください。LLMへ渡す場合は`toolset()`を使います。`openaiDefinitions()`はChat Completions形式の非推奨aliasとして残しています。
 
 ## Context Guardで行う検査
 
 取得した文書は、検出結果が0件でも`trust: "untrusted"`、`tainted: true`になります。内蔵Context Guardは無効化できません。
 
-検査では、可視本文、非表示内容、HTMLコメント、メタデータ、template、信頼度の低い属性を分けます。Unicode、zero-width文字、URL / hex escape、Base64、区切り文字による分割、leetspeakによる難読化を、処理量に上限を設けて正規化します。そのうえで、命令の上書き、役割変更、秘密情報の送信要求、ツール実行、外部送信、memory変更、policy変更、出典の隠蔽、出力形式の強制などを判定します。
+検査では、可視本文、非表示内容、HTMLコメント、メタデータ、template、信頼度の低い属性を分けます。長すぎるsegmentは先頭と末尾を検査し、件数や文字数の上限で欠落が出た場合は必ず安全側へ倒して`limitations`へ理由を残します。HTTP charset、BOM、HTML metaはclientと単独Guardで同じdecoderを使い、BOMを優先します。未対応または不正な文字コードは`UNSUPPORTED_CONTENT_ENCODING`になります。
 
 厳しめに判定する場合は`strict`プロファイルを指定します。
 
@@ -195,23 +198,29 @@ const web = createLlmFetch({
 
 Context Guardは、取得した文章が安全であることを証明する機能ではありません。HTTP取得では外部スタイルシートによる非表示状態まで判断できず、ブラウザ利用時も文章の意味を完全には判定できません。書き込みツール、コード実行、外部送信、memory更新、policy変更などの操作は、アプリケーション側で別の承認手順を設けてください。
 
-`fetcher`はテストや特殊な接続方式のための上級者向け設定です。指定すると内蔵のSSRF対策付きHTTP通信処理を置き換えます。本番環境で差し替える場合は、接続先IP、リダイレクト、容量、content-type、期限を同等に検査してください。独自プロバイダー、retriever、fetcher、Guardは、受け取った`AbortSignal`に従う必要があります。
+`fetcher`は上級者向け設定で、内蔵のSSRF対策付き通信処理を置き換えます。本番の独自実装は、接続先IP、DNS rebinding、redirect、容量、content-type、期限をすべて負担します。clientは返されたURLの形式と明白なlocal/private literalを再検査しますが、独自実装が実際に接続したIPまでは保証できません。独自provider、retriever、fetcher、Guardが`AbortSignal`を無視した場合、clientは待機を終了できても内部処理までは停止できません。
 
 ## エラーを処理する
 
 ```ts
-import { LlmFetchError } from "@scope/llm-fetch";
+import { LlmFetchError } from "llm-fetch";
 
 try {
   await web.read({ url: "http://127.0.0.1/admin" });
 } catch (error) {
   if (error instanceof LlmFetchError) {
-    console.error(error.code, error.retryable);
+    console.error(error.code, error.retryable, error.guardDecision);
   }
 }
 ```
 
 内蔵プロバイダーとHTTP通信処理は、取得したHTML、検索レスポンス、Cookie、APIキーをエラーメッセージへ含めません。独自実装を追加する場合も、同じ情報をログや例外へ出さないでください。
+
+`GUARD_DENIED`の`guardDecision`で`require_approval`と`deny`を区別できます。`warningCategories`には短い分類名だけが入り、JSON化しても本文やcauseは出ません。既定値と推奨処理は[API・エラー一覧](./docs/API.md)にまとめています。
+
+## 制約、privacy、利用上の責任
+
+Shadow DOM、CSS generated content、canvasや画像内の文字、iframe本文、外部CSS本文は抽出しません。接続先は標準HTTP / HTTPS portだけです。browser modeでは第三者JavaScriptを実行します。検索語は選択したproviderへ送られ、取得先サイトには利用者のIP、User-Agent、アクセス時刻などが伝わります。providerとsiteの利用条件、robots、頻度、個人情報、著作権を確認してください。詳しくは[Responsible use and privacy](./docs/RESPONSIBLE_USE.md)を参照してください。
 
 `close()`は複数回呼んでも問題ありません。終了処理を始めたクライアントは再利用できず、新しい操作は`CONFIG_MISSING`になります。
 
@@ -230,7 +239,7 @@ LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 \
   npx vitest run test/playwright/integration.test.ts
 ```
 
-`npm run verify`はLint、型検査、単体・セキュリティテスト、本番依存のライセンス検査、ESM / CommonJS / 型定義、コア機能だけのインストールを確認します。
+`npm run verify`はLint、型検査、単体・セキュリティテスト、coverage、本番依存のlicense、pack後のESM / CommonJS / NodeNext / bundler、core-only install、`publint`、Are The Types Wrongを確認します。Chromiumは非rootのsandbox付きcontainerで別jobとして検証します。
 
 ## ライセンス
 

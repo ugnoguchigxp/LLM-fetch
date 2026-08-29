@@ -1,4 +1,8 @@
-import type { SearchHit, SearchInput, SearchProvider } from "../contracts.js";
+import type {
+  SearchInput,
+  SearchProvider,
+  SearchProviderHit,
+} from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
 
 function hasControlCharacters(value: string): boolean {
@@ -40,7 +44,7 @@ export function fallbackSearch(providers: readonly SearchProvider[]): SearchProv
 
   return {
     name,
-    async search(input: SearchInput): Promise<SearchHit[]> {
+    async search(input: SearchInput): Promise<SearchProviderHit[]> {
       let lastError: LlmFetchError | undefined;
       for (const provider of chain) {
         try {

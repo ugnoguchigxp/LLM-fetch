@@ -164,23 +164,61 @@ export function scanSegments(
     maxSegments?: number;
     maxCharacters?: number;
   },
-): { findings: SecurityFinding[]; truncated: boolean } {
+): {
+  findings: SecurityFinding[];
+  truncated: boolean;
+  truncationReasons: string[];
+} {
   const maxSegments = options.maxSegments ?? 128;
   const maxCharacters = options.maxCharacters ?? 250_000;
   const findings: SecurityFinding[] = [];
   const keys = new Set<string>();
+  const truncationReasons = new Set<string>();
   let inspectedCharacters = 0;
-  let truncated = segments.length > maxSegments;
+  if (segments.some((segment) => segment.truncated)) {
+    truncationReasons.add(
+      "One or more content segments exceeded the per-segment inspection limit.",
+    );
+  }
+  if (segments.length > maxSegments) {
+    truncationReasons.add(
+      "The content contained more segments than the inspection limit.",
+    );
+  }
 
-  for (const segment of segments.slice(0, maxSegments)) {
+  const selectedSegments =
+    segments.length <= maxSegments
+      ? [...segments]
+      : [
+          ...segments.slice(0, Math.ceil(maxSegments / 2)),
+          ...segments.slice(-Math.floor(maxSegments / 2)),
+        ];
+
+  for (const [index, segment] of selectedSegments.entries()) {
     const remaining = maxCharacters - inspectedCharacters;
     if (remaining <= 0) {
-      truncated = true;
+      truncationReasons.add(
+        "The content exceeded the total character inspection limit.",
+      );
       break;
     }
-    const text = segment.text.slice(0, remaining);
+    const remainingSegments = selectedSegments.length - index;
+    const fairShare = Math.max(1, Math.floor(remaining / remainingSegments));
+    const budget = Math.min(segment.text.length, fairShare);
+    const headLength = Math.ceil(budget / 2);
+    const tailLength = Math.floor(budget / 2);
+    const text =
+      segment.text.length <= budget
+        ? segment.text
+        : `${segment.text.slice(0, headLength)}${
+            tailLength > 0 ? segment.text.slice(-tailLength) : ""
+          }`;
     inspectedCharacters += text.length;
-    if (text.length < segment.text.length) truncated = true;
+    if (text.length < segment.text.length) {
+      truncationReasons.add(
+        "The content exceeded the total character inspection limit.",
+      );
+    }
     let segmentMatchedRule = false;
 
     for (const variant of normalizeForScan(text, {
@@ -190,7 +228,12 @@ export function scanSegments(
       for (const rule of RULES) {
         if (!rule.all.every((pattern) => pattern.test(variant.text))) continue;
         segmentMatchedRule = true;
-        const finding = findingFor(rule, { ...segment, text }, variant.techniques, options.profile);
+        const finding = findingFor(
+          rule,
+          { ...segment, text },
+          variant.techniques,
+          options.profile,
+        );
         const key = `${finding.category}:${rule.category}:${finding.location}:${finding.segmentHash}`;
         if (keys.has(key)) continue;
         keys.add(key);
@@ -215,5 +258,9 @@ export function scanSegments(
     }
   }
 
-  return { findings, truncated };
+  return {
+    findings,
+    truncated: truncationReasons.size > 0,
+    truncationReasons: [...truncationReasons],
+  };
 }

@@ -7,6 +7,14 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const projectRoot = resolve(import.meta.dirname, "..");
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "llm-fetch-package-"));
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const packageManifest = JSON.parse(
+  await readFile(join(projectRoot, "package.json"), "utf8"),
+);
+const packageSpecifier = JSON.stringify(packageManifest.name);
+const playwrightSpecifier = JSON.stringify(
+  `${packageManifest.name}/playwright`,
+);
 
 async function run(command, arguments_, cwd = projectRoot) {
   return execFileAsync(command, arguments_, {
@@ -17,7 +25,7 @@ async function run(command, arguments_, cwd = projectRoot) {
 }
 
 try {
-  const packed = await run("npm", [
+  const packed = await run(npmCommand, [
     "pack",
     "--json",
     "--pack-destination",
@@ -27,9 +35,32 @@ try {
   const packResult = JSON.parse(
     jsonStart >= 0 ? packed.stdout.slice(jsonStart + 1) : packed.stdout,
   );
-  const filename = packResult?.[0]?.filename;
+  const packedMetadata = packResult?.[0];
+  const filename = packedMetadata?.filename;
   if (typeof filename !== "string" || !filename) {
     throw new Error("npm pack did not report a tarball filename.");
+  }
+  if (
+    packedMetadata.name !== packageManifest.name ||
+    packedMetadata.version !== packageManifest.version
+  ) {
+    throw new Error("npm pack metadata does not match package.json.");
+  }
+  const packedPaths = new Set(
+    (packedMetadata.files ?? []).map((entry) => entry.path),
+  );
+  for (const requiredPath of [
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "README.ja.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "package.json",
+  ]) {
+    if (!packedPaths.has(requiredPath)) {
+      throw new Error(`Packed package is missing ${requiredPath}.`);
+    }
   }
   const tarball = join(temporaryDirectory, filename);
   await writeFile(
@@ -37,7 +68,7 @@ try {
     JSON.stringify({ private: true, type: "module" }),
   );
   await run(
-    "npm",
+    npmCommand,
     ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
     temporaryDirectory,
   );
@@ -45,8 +76,7 @@ try {
   const installedPackageRoot = join(
     temporaryDirectory,
     "node_modules",
-    "@scope",
-    "llm-fetch",
+    ...packageManifest.name.split("/"),
   );
   const installedPackage = JSON.parse(
     await readFile(join(installedPackageRoot, "package.json"), "utf8"),
@@ -59,6 +89,8 @@ try {
     access(join(installedPackageRoot, "NOTICE")),
     access(join(installedPackageRoot, "README.md")),
     access(join(installedPackageRoot, "README.ja.md")),
+    access(join(installedPackageRoot, "CHANGELOG.md")),
+    access(join(installedPackageRoot, "SECURITY.md")),
   ]);
 
   try {
@@ -78,8 +110,8 @@ try {
   }
 
   const esmConsumer = `
-    import { createLlmFetch } from "@scope/llm-fetch";
-    import { playwrightRetriever } from "@scope/llm-fetch/playwright";
+    import { createLlmFetch } from ${packageSpecifier};
+    import { playwrightRetriever } from ${playwrightSpecifier};
     const client = createLlmFetch({
       search: { name: "fixture", async search() { return []; } },
     });
@@ -89,8 +121,8 @@ try {
     await client.close();
   `;
   const cjsConsumer = `
-    const { createLlmFetch } = require("@scope/llm-fetch");
-    const { playwrightRetriever } = require("@scope/llm-fetch/playwright");
+    const { createLlmFetch } = require(${packageSpecifier});
+    const { playwrightRetriever } = require(${playwrightSpecifier});
     (async () => {
       const client = createLlmFetch({
         search: { name: "fixture", async search() { return []; } },
@@ -104,8 +136,8 @@ try {
     });
   `;
   const typeConsumer = `
-    import { createLlmFetch, type SearchProvider } from "@scope/llm-fetch";
-    import { playwrightRetriever } from "@scope/llm-fetch/playwright";
+    import { createLlmFetch, type SearchProvider } from ${packageSpecifier};
+    import { playwrightRetriever } from ${playwrightSpecifier};
     const search: SearchProvider = { name: "fixture", async search() { return []; } };
     const browser = playwrightRetriever();
     const client = createLlmFetch({ search, browser: { retriever: browser } });
@@ -129,6 +161,20 @@ try {
         files: ["consumer.ts"],
       }),
     ),
+    writeFile(
+      join(temporaryDirectory, "tsconfig.bundler.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          skipLibCheck: false,
+          noEmit: true,
+        },
+        files: ["consumer.ts"],
+      }),
+    ),
   ]);
 
   await run(process.execPath, [join(temporaryDirectory, "consumer.mjs")]);
@@ -143,6 +189,11 @@ try {
     join(projectRoot, "node_modules", "typescript", typescriptPackage.bin.tsc),
     "--project",
     join(temporaryDirectory, "tsconfig.json"),
+  ]);
+  await run(process.execPath, [
+    join(projectRoot, "node_modules", "typescript", typescriptPackage.bin.tsc),
+    "--project",
+    join(temporaryDirectory, "tsconfig.bundler.json"),
   ]);
 
   process.stdout.write(

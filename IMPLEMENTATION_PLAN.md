@@ -121,14 +121,14 @@ G4は自動的に実行しない。npmへの実publishは、最終パッケー�
 
 優先度: P0
 規模: M
-依存: 最終npm scope / package名の決定
+依存: 解消。2026-08-29時点で未登録を確認した非scope名`llm-fetch`に統一
 
 実装内容:
 
-- npm上の最終パッケージ名とscope所有権を確認する。
+- npm上の最終パッケージ名の登録状況を確認する。
 - `package.json`へ`repository`、`homepage`、`bugs`、`keywords`、`author`、`packageManager`を追加する。
 - `repository.url`を公開GitHubリポジトリと大文字小文字を含めて一致させる。
-- README、plan、consumer test、install例の`@scope/llm-fetch`を一括置換する。
+- README、plan、consumer test、install例の`llm-fetch`を一括置換する。
 - `scripts/verify-package.mjs`がpackage名を`package.json`から読み、scopeをハードコードしないようにする。
 - package内のLICENSE、NOTICE、README、SECURITYの存在とMIT表記をpack testで確認する。
 
@@ -728,21 +728,21 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 
 ## 10. 最終リリース判定チェックリスト
 
-- [ ] SEC-01: 深いHTMLでdeadline逸脱や生の`RangeError`が発生しない
-- [ ] SEC-02: segment切り捨てが必ずGuard判定へ反映される
-- [ ] SEC-03: charset処理がclientとstandalone Guardで一致する
+- [x] SEC-01: 深いHTMLでdeadline逸脱や生の`RangeError`が発生しない
+- [x] SEC-02: segment切り捨てが必ずGuard判定へ反映される
+- [x] SEC-03: charset処理がclientとstandalone Guardで一致する
 - [ ] GitHub Actionsの全必須jobが成功している
-- [ ] Chromium sandbox有効のintegration testが成功している
-- [ ] coverageとGuardコーパスの閾値を満たしている
-- [ ] performance targetを満たすか、変更理由が承認されている
-- [ ] OpenAI Responses / Chat Completions / Bedrockの互換テストが成功している
+- [x] Chromium sandbox有効のintegration testが成功している
+- [x] coverageとGuardコーパスの閾値を満たしている
+- [x] performance targetを満たすか、変更理由が承認されている
+- [x] OpenAI Responses / Chat Completions / Bedrockの互換テストが成功している
 - [ ] Windowsを含むpacked consumer testが成功している
-- [ ] final package名、README、repository metadataが一致している
+- [x] final package名、README、repository metadataが一致している
 - [ ] DuckDuckGoの公開上の扱いが確定している
-- [ ] README英語版・日本語版・SECURITYの記述が実装と一致している
-- [ ] production / development dependency auditに未解決の重大問題がない
-- [ ] `publint`とAre The Types Wrongが成功している
-- [ ] npm publish dry-runが成功している
+- [x] README英語版・日本語版・SECURITYの記述が実装と一致している
+- [x] production / development dependency auditに未解決の重大問題がない
+- [x] `publint`とAre The Types Wrongが成功している
+- [x] npm publish dry-runが成功している
 - [ ] provenanceのリポジトリ情報が正しい
-- [ ] CHANGELOGとrelease noteが用意されている
+- [x] CHANGELOGとrelease noteが用意されている
 - [ ] 明示的な公開承認を得ている

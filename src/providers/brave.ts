@@ -6,6 +6,7 @@ import {
   waitWithSignal,
 } from "../internal/abort-signal.js";
 import { createDeadline } from "../internal/deadline.js";
+import { PACKAGE_VERSION } from "../internal/version.js";
 import { readResponseBytes } from "../internal/read-response.js";
 import {
   deduplicateSearchUrls,
@@ -32,6 +33,14 @@ function positiveInteger(value: number, name: string, maximum: number): number {
   return value;
 }
 
+function hasControlCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function discardBody(response: Response): void {
   try {
     const cancellation = response.body?.cancel();
@@ -39,6 +48,20 @@ function discardBody(response: Response): void {
   } catch {
     // The body may already be closed by the fetch implementation.
   }
+}
+
+function withBraveContext(error: LlmFetchError): LlmFetchError {
+  if (error.provider === "brave") return error;
+  return new LlmFetchError(error.code, error.message, {
+    cause: error,
+    provider: "brave",
+    retryable: error.retryable,
+    ...(error.url === undefined ? {} : { url: error.url }),
+    ...(error.status === undefined ? {} : { status: error.status }),
+    ...(error.cooldownMs === undefined
+      ? {}
+      : { cooldownMs: error.cooldownMs }),
+  });
 }
 
 interface BraveResult {
@@ -112,6 +135,30 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
       provider: "brave",
     });
   }
+  if (
+    input.language !== undefined &&
+    (typeof input.language !== "string" ||
+      !/^[a-z]{2}$/iu.test(input.language))
+  ) {
+    throw new LlmFetchError("INVALID_INPUT", "language is invalid.", {
+      provider: "brave",
+    });
+  }
+  if (
+    input.region !== undefined &&
+    (typeof input.region !== "string" || !/^[a-z]{2}$/iu.test(input.region))
+  ) {
+    throw new LlmFetchError("INVALID_INPUT", "region is invalid.", {
+      provider: "brave",
+    });
+  }
+  if (input.locale && (input.language || input.region)) {
+    throw new LlmFetchError(
+      "INVALID_INPUT",
+      "locale cannot be combined with language or region.",
+      { provider: "brave" },
+    );
+  }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.", {
       provider: "brave",
@@ -119,6 +166,16 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
   }
   input.signal?.throwIfAborted();
   return { query, limit };
+}
+
+function retryAfterMs(value: string | null, now = Date.now()): number {
+  if (!value) return 60_000;
+  const seconds = Number(value.trim());
+  const milliseconds = Number.isFinite(seconds)
+    ? seconds * 1_000
+    : Date.parse(value) - now;
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return 60_000;
+  return Math.min(Math.ceil(milliseconds), 300_000);
 }
 
 function freshness(value: SearchInput["timeRange"]): string | undefined {
@@ -137,8 +194,18 @@ function freshness(value: SearchInput["timeRange"]): string | undefined {
 }
 
 export function brave(options: BraveOptions): SearchProvider {
-  const apiKey = options?.apiKey?.trim();
-  if (!apiKey || apiKey.length > 512 || /[\r\n]/.test(apiKey)) {
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new LlmFetchError("INVALID_INPUT", "Brave options must be an object.", {
+      provider: "brave",
+    });
+  }
+  const apiKey =
+    typeof options.apiKey === "string" ? options.apiKey.trim() : "";
+  if (
+    !apiKey ||
+    apiKey.length > 512 ||
+    hasControlCharacters(apiKey)
+  ) {
     throw new LlmFetchError(
       "CONFIG_MISSING",
       "A valid Brave Search API key is required.",
@@ -189,6 +256,10 @@ export function brave(options: BraveOptions): SearchProvider {
         safesearch: input.safeSearch ?? "moderate",
       });
       if (input.locale) searchParams.set("search_lang", input.locale.trim());
+      if (input.language) {
+        searchParams.set("search_lang", input.language.toLowerCase());
+      }
+      if (input.region) searchParams.set("country", input.region.toUpperCase());
       const freshnessValue = freshness(input.timeRange);
       if (freshnessValue) searchParams.set("freshness", freshnessValue);
       const url = new URL(BRAVE_SEARCH_ENDPOINT);
@@ -206,7 +277,7 @@ export function brave(options: BraveOptions): SearchProvider {
             headers: {
               accept: "application/json",
               "x-subscription-token": apiKey,
-              "user-agent": "llm-fetch/0.1",
+              "user-agent": `llm-fetch/${PACKAGE_VERSION}`,
             },
           }),
           signal,
@@ -236,8 +307,9 @@ export function brave(options: BraveOptions): SearchProvider {
       }
 
       if (response.status === 429) {
+        const cooldownMs = retryAfterMs(response.headers.get("retry-after"));
         discardBody(response);
-        rateLimitedUntil = Date.now() + 60_000;
+        rateLimitedUntil = Date.now() + cooldownMs;
         throw new LlmFetchError(
           "RATE_LIMITED",
           "Brave Search rate limited the request.",
@@ -245,7 +317,7 @@ export function brave(options: BraveOptions): SearchProvider {
             provider: "brave",
             status: 429,
             retryable: true,
-            cooldownMs: 60_000,
+            cooldownMs,
           },
         );
       }
@@ -282,7 +354,7 @@ export function brave(options: BraveOptions): SearchProvider {
       try {
         bytes = await readResponseBytes(response, maxResponseBytes, signal);
       } catch (error) {
-        if (error instanceof LlmFetchError) throw error;
+        if (error instanceof LlmFetchError) throw withBraveContext(error);
         if (input.signal?.aborted) throw abortReason(input.signal);
         if (
           deadline.remainingMs() <= 0 ||
@@ -340,6 +412,8 @@ export function brave(options: BraveOptions): SearchProvider {
           rawUrl.length <= 2_048 ? normalizeResultUrl(rawUrl) : null;
         if (!title || !urlValue) continue;
         hits.push({
+          trust: "untrusted",
+          tainted: true,
           provider: "brave",
           rank: hits.length + 1,
           title: title.slice(0, 1_000),

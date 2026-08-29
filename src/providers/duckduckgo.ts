@@ -168,6 +168,96 @@ function timeRangeValue(value: TimeRange | undefined): string | undefined {
   }
 }
 
+const DEFAULT_REGION_BY_LANGUAGE: Readonly<Record<string, string>> = {
+  bg: "BG",
+  cs: "CZ",
+  da: "DK",
+  de: "DE",
+  el: "GR",
+  en: "US",
+  es: "ES",
+  et: "EE",
+  fi: "FI",
+  fr: "FR",
+  he: "IL",
+  hr: "HR",
+  hu: "HU",
+  id: "ID",
+  it: "IT",
+  ja: "JP",
+  ko: "KR",
+  lt: "LT",
+  lv: "LV",
+  ms: "MY",
+  nl: "NL",
+  no: "NO",
+  pl: "PL",
+  pt: "PT",
+  ro: "RO",
+  ru: "RU",
+  sk: "SK",
+  sl: "SI",
+  sv: "SE",
+  th: "TH",
+  tl: "PH",
+  tr: "TR",
+  uk: "UA",
+  vi: "VN",
+  zh: "CN",
+};
+const DUCKDUCKGO_REGION_CODES = new Map([
+  ["AR:es", "ar-es"], ["AU:en", "au-en"], ["AT:de", "at-de"],
+  ["BE:fr", "be-fr"], ["BE:nl", "be-nl"], ["BR:pt", "br-pt"],
+  ["BG:bg", "bg-bg"], ["CA:en", "ca-en"], ["CA:fr", "ca-fr"],
+  ["CL:es", "cl-es"], ["CN:zh", "cn-zh"], ["CO:es", "co-es"],
+  ["HR:hr", "hr-hr"], ["CZ:cs", "cz-cs"], ["DK:da", "dk-da"],
+  ["EE:et", "ee-et"], ["FI:fi", "fi-fi"], ["FR:fr", "fr-fr"],
+  ["DE:de", "de-de"], ["GR:el", "gr-el"], ["HK:zh", "hk-tzh"],
+  ["HU:hu", "hu-hu"], ["IN:en", "in-en"], ["ID:id", "id-id"],
+  ["ID:en", "id-en"], ["IE:en", "ie-en"], ["IL:he", "il-he"],
+  ["IT:it", "it-it"], ["JP:ja", "jp-jp"], ["KR:ko", "kr-kr"],
+  ["LV:lv", "lv-lv"], ["LT:lt", "lt-lt"], ["MY:ms", "my-ms"],
+  ["MY:en", "my-en"], ["MX:es", "mx-es"], ["NL:nl", "nl-nl"],
+  ["NZ:en", "nz-en"], ["NO:no", "no-no"], ["PE:es", "pe-es"],
+  ["PH:en", "ph-en"], ["PH:tl", "ph-tl"], ["PL:pl", "pl-pl"],
+  ["PT:pt", "pt-pt"], ["RO:ro", "ro-ro"], ["RU:ru", "ru-ru"],
+  ["SG:en", "sg-en"], ["SK:sk", "sk-sk"], ["SI:sl", "sl-sl"],
+  ["ZA:en", "za-en"], ["ES:es", "es-es"], ["SE:sv", "se-sv"],
+  ["CH:de", "ch-de"], ["CH:fr", "ch-fr"], ["CH:it", "ch-it"],
+  ["TW:zh", "tw-tzh"], ["TH:th", "th-th"], ["TR:tr", "tr-tr"],
+  ["UA:uk", "ua-uk"], ["GB:en", "uk-en"], ["US:en", "us-en"],
+  ["US:es", "ue-es"], ["VE:es", "ve-es"], ["VN:vi", "vn-vi"],
+]);
+
+function duckDuckGoRegion(input: SearchInput): string | undefined {
+  if (input.locale) return input.locale.trim();
+  const language = input.language?.toLowerCase();
+  const region =
+    input.region?.toUpperCase() ??
+    (language ? DEFAULT_REGION_BY_LANGUAGE[language] : undefined);
+  if (!region) {
+    if (!language) return undefined;
+    throw new LlmFetchError(
+      "INVALID_INPUT",
+      "DuckDuckGo does not support the requested language without an explicit region.",
+      { provider: "duckduckgo" },
+    );
+  }
+  const code = language
+    ? DUCKDUCKGO_REGION_CODES.get(`${region}:${language}`)
+    : [...DUCKDUCKGO_REGION_CODES].find(([key]) =>
+        key.startsWith(`${region}:`),
+      )?.[1];
+  if (!code) {
+    throw new LlmFetchError(
+      "INVALID_INPUT",
+      "DuckDuckGo does not support the requested language and region combination.",
+      { provider: "duckduckgo" },
+    );
+  }
+  return code;
+}
+
 function validateSearchInput(
   input: SearchInput,
 ): Required<Pick<SearchInput, "query" | "limit">> {
@@ -221,6 +311,30 @@ function validateSearchInput(
     throw new LlmFetchError("INVALID_INPUT", "locale is invalid.", {
       provider: "duckduckgo",
     });
+  }
+  if (
+    input.language !== undefined &&
+    (typeof input.language !== "string" ||
+      !/^[a-z]{2}$/iu.test(input.language))
+  ) {
+    throw new LlmFetchError("INVALID_INPUT", "language is invalid.", {
+      provider: "duckduckgo",
+    });
+  }
+  if (
+    input.region !== undefined &&
+    (typeof input.region !== "string" || !/^[a-z]{2}$/iu.test(input.region))
+  ) {
+    throw new LlmFetchError("INVALID_INPUT", "region is invalid.", {
+      provider: "duckduckgo",
+    });
+  }
+  if (input.locale && (input.language || input.region)) {
+    throw new LlmFetchError(
+      "INVALID_INPUT",
+      "locale cannot be combined with language or region.",
+      { provider: "duckduckgo" },
+    );
   }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.", {
@@ -517,7 +631,8 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
       q: query,
       kp: safeSearchValue(input.safeSearch),
     });
-    if (input.locale) body.set("kl", input.locale.trim());
+    const region = duckDuckGoRegion(input);
+    if (region) body.set("kl", region);
     const range = timeRangeValue(input.timeRange);
     if (range) body.set("df", range);
     return body;
@@ -544,9 +659,8 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
     bootstrapUrl.searchParams.set("q", query);
     bootstrapUrl.searchParams.set("ia", "web");
     bootstrapUrl.searchParams.set("kp", safeSearchValue(input.safeSearch));
-    if (input.locale) {
-      bootstrapUrl.searchParams.set("kl", input.locale.trim());
-    }
+    const region = duckDuckGoRegion(input);
+    if (region) bootstrapUrl.searchParams.set("kl", region);
     const range = timeRangeValue(input.timeRange);
     if (range) bootstrapUrl.searchParams.set("df", range);
 

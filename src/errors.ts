@@ -1,3 +1,8 @@
+import type {
+  GuardDecision,
+  SecurityFindingCategory,
+} from "./contracts.js";
+
 export type LlmFetchErrorCode =
   | "INVALID_INPUT"
   | "CONFIG_MISSING"
@@ -21,6 +26,8 @@ export interface LlmFetchErrorOptions extends ErrorOptions {
   status?: number;
   retryable?: boolean;
   cooldownMs?: number;
+  guardDecision?: Extract<GuardDecision, "require_approval" | "deny">;
+  warningCategories?: readonly SecurityFindingCategory[];
 }
 
 export class LlmFetchError extends Error {
@@ -30,6 +37,11 @@ export class LlmFetchError extends Error {
   readonly status?: number;
   readonly retryable: boolean;
   readonly cooldownMs?: number;
+  readonly guardDecision?: Extract<
+    GuardDecision,
+    "require_approval" | "deny"
+  >;
+  readonly warningCategories?: readonly SecurityFindingCategory[];
 
   constructor(
     code: LlmFetchErrorCode,
@@ -44,6 +56,35 @@ export class LlmFetchError extends Error {
     if (options.url !== undefined) this.url = options.url;
     if (options.status !== undefined) this.status = options.status;
     if (options.cooldownMs !== undefined) this.cooldownMs = options.cooldownMs;
+    if (options.guardDecision !== undefined) {
+      this.guardDecision = options.guardDecision;
+    }
+    if (options.warningCategories !== undefined) {
+      this.warningCategories = Object.freeze([
+        ...new Set(options.warningCategories),
+      ]);
+    }
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      code: this.code,
+      message: this.message,
+      retryable: this.retryable,
+      ...(this.provider === undefined ? {} : { provider: this.provider }),
+      ...(this.url === undefined ? {} : { url: this.url }),
+      ...(this.status === undefined ? {} : { status: this.status }),
+      ...(this.cooldownMs === undefined
+        ? {}
+        : { cooldownMs: this.cooldownMs }),
+      ...(this.guardDecision === undefined
+        ? {}
+        : { guardDecision: this.guardDecision }),
+      ...(this.warningCategories === undefined
+        ? {}
+        : { warningCategories: [...this.warningCategories] }),
+    };
   }
 }
 

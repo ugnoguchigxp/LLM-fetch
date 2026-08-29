@@ -18,6 +18,7 @@ import {
   isAbortSignal,
   waitWithSignal,
 } from "../internal/abort-signal.js";
+import { PACKAGE_VERSION } from "../internal/version.js";
 import {
   defaultAddressResolver,
   resolveSafeOutboundUrl,
@@ -137,8 +138,10 @@ function normalizeOptions(
       "externalSandbox must be a boolean.",
     );
   }
-  const userAgent = options.userAgent ?? "llm-fetch-playwright/0.1";
+  const userAgent =
+    options.userAgent ?? `llm-fetch-playwright/${PACKAGE_VERSION}`;
   if (
+    typeof userAgent !== "string" ||
     !userAgent.trim() ||
     userAgent.length > 512 ||
     hasControlCharacters(userAgent)
@@ -226,13 +229,13 @@ function readableContentType(value: string): string {
 function responseHeaders(
   headers: Record<string, string>,
 ): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const name of [
-    "content-type",
-    "content-language",
-    "last-modified",
-    "etag",
-  ]) {
+  // The browser has already decoded the navigation response and the rendered
+  // DOM snapshot is encoded below with TextEncoder. Do not retain the original
+  // response charset (or XHTML media type) for these new UTF-8 HTML bytes.
+  const result: Record<string, string> = {
+    "content-type": "text/html; charset=utf-8",
+  };
+  for (const name of ["content-language", "last-modified", "etag"]) {
     const value = headers[name];
     if (value && value.length <= 16_384) result[name] = value;
   }
@@ -242,7 +245,7 @@ function responseHeaders(
 function browserRequestHeaders(
   headers: Record<string, string>,
 ): Record<string, string> {
-  const result: Record<string, string> = {};
+  const result = Object.create(null) as Record<string, string>;
   let count = 0;
   let totalLength = 0;
   for (const [rawName, value] of Object.entries(headers)) {
@@ -412,14 +415,65 @@ export function monitorNetworkBudget(
   });
 }
 
+function collectBoundedRenderedState(options: {
+  maxDomNodes: number;
+  maxTextCharacters: number;
+}): {
+  textLength: number;
+  nodeCount: number;
+  exceeded: boolean;
+} {
+  const root = document.body;
+  if (!root) return { textLength: 0, nodeCount: 0, exceeded: false };
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
+  );
+  let textLength = 0;
+  let nodeCount = 1;
+  while (walker.nextNode()) {
+    nodeCount += 1;
+    if (nodeCount > options.maxDomNodes) {
+      return { textLength, nodeCount, exceeded: true };
+    }
+    const node = walker.currentNode;
+    if (node.nodeType === Node.TEXT_NODE) {
+      textLength += node.nodeValue?.length ?? 0;
+      if (textLength > options.maxTextCharacters) {
+        return { textLength, nodeCount, exceeded: true };
+      }
+    }
+  }
+  return { textLength, nodeCount, exceeded: false };
+}
+
+function isRenderedState(
+  value: unknown,
+): value is ReturnType<typeof collectBoundedRenderedState> {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<ReturnType<typeof collectBoundedRenderedState>>;
+  return (
+    Number.isSafeInteger(state.textLength) &&
+    (state.textLength ?? -1) >= 0 &&
+    Number.isSafeInteger(state.nodeCount) &&
+    (state.nodeCount ?? -1) >= 0 &&
+    typeof state.exceeded === "boolean"
+  );
+}
+
 async function waitForRenderedContent(
   page: Page,
+  session: CDPSession,
   timeoutMs: number,
   maxDomNodes: number,
+  maxTextCharacters: number,
   signal: AbortSignal | undefined,
   policyError: () => LlmFetchError | undefined,
 ): Promise<void> {
   if (timeoutMs === 0) return;
+  const expression = `(${collectBoundedRenderedState.toString()})(${JSON.stringify(
+    { maxDomNodes, maxTextCharacters },
+  )})`;
   const startedAt = performance.now();
   let previous = "";
   let stableCount = 0;
@@ -427,17 +481,44 @@ async function waitForRenderedContent(
     signal?.throwIfAborted();
     const blocked = policyError();
     if (blocked) throw blocked;
-    const state = await withOptionalSignal(
-      page.evaluate(() => ({
-        textLength: document.body?.innerText.length ?? 0,
-        nodeCount: document.getElementsByTagName("*").length,
-      })),
+    // Refresh the isolated world for each sample because a page may navigate
+    // again after DOMContentLoaded while it is settling.
+    const frameTree = await withOptionalSignal(
+      session.send("Page.getFrameTree"),
       signal,
     );
-    if (state.nodeCount > maxDomNodes) {
+    const world = await withOptionalSignal(
+      session.send("Page.createIsolatedWorld", {
+        frameId: frameTree.frameTree.frame.id,
+        worldName: "llm-fetch-rendered-settle",
+        grantUniveralAccess: false,
+      }),
+      signal,
+    );
+    const evaluation = await withOptionalSignal(
+      session.send("Runtime.evaluate", {
+        expression,
+        contextId: world.executionContextId,
+        returnByValue: true,
+        awaitPromise: false,
+        includeCommandLineAPI: false,
+        timeout: Math.max(100, Math.min(1_000, timeoutMs)),
+        disableBreaks: true,
+      }),
+      signal,
+    );
+    if (evaluation.exceptionDetails || !isRenderedState(evaluation.result.value)) {
+      throw new LlmFetchError(
+        "GUARD_FAILED",
+        "Rendered DOM settle inspection failed in the isolated browser world.",
+        { url: page.url() },
+      );
+    }
+    const state = evaluation.result.value;
+    if (state.exceeded) {
       throw new LlmFetchError(
         "RESPONSE_TOO_LARGE",
-        "The rendered DOM has too many nodes.",
+        "The rendered DOM exceeded the settle inspection limit.",
         {
           url: page.url(),
         },
@@ -773,8 +854,10 @@ export function playwrightRetriever(
           );
           await waitForRenderedContent(
             page,
+            cdp,
             options.settleTimeoutMs,
             options.maxDomNodes,
+            options.maxHtmlCharacters,
             signal,
             () => blockedError,
           );

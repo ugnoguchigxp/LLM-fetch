@@ -25,11 +25,16 @@ export class Semaphore {
       return;
     }
     await new Promise<void>((resolve) => this.#queue.push(resolve));
-    this.#active += 1;
   }
 
   #release(): void {
+    const waiter = this.#queue.shift();
+    if (waiter) {
+      // Transfer the occupied slot directly. Decrementing first would let a
+      // newly arriving task race the resumed waiter and exceed the limit.
+      waiter();
+      return;
+    }
     this.#active -= 1;
-    this.#queue.shift()?.();
   }
 }

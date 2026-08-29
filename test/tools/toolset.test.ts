@@ -36,6 +36,14 @@ function result(url: string): SafeFetchResult {
 }
 
 describe("LLM toolset", () => {
+  it("rejects unavailable web_search on a read-only toolset", async () => {
+    const toolset = createLlmFetch({ fetcher: vi.fn() }).toolset();
+    expect(toolset.bedrockDefinitions()).toHaveLength(1);
+    await expect(
+      toolset.execute("web_search", { query: "missing" }),
+    ).rejects.toMatchObject({ code: "CONFIG_MISSING" });
+  });
+
   it("creates OpenAI and Bedrock definitions without SDK dependencies", () => {
     const search: SearchProvider = {
       name: "fixture",
@@ -54,6 +62,18 @@ describe("LLM toolset", () => {
         }),
       ]),
     );
+    expect(toolset.openaiResponsesDefinitions()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "function",
+          name: "web_search",
+          strict: true,
+        }),
+      ]),
+    );
+    expect(
+      toolset.openaiChatCompletionsDefinitions()[0]?.function.strict,
+    ).toBe(true);
     expect(toolset.bedrockDefinitions()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -62,12 +82,26 @@ describe("LLM toolset", () => {
       ]),
     );
     const fetchDefinition = toolset
-      .openaiDefinitions()
+      .openaiChatCompletionsDefinitions()
       .find((definition) => definition.function.name === "fetch_content");
     expect(fetchDefinition?.function.parameters).toMatchObject({
+      required: ["url", "maxCharacters"],
       properties: {
-        maxCharacters: { default: 5_000, maximum: 20_000 },
+        maxCharacters: {
+          type: ["integer", "null"],
+          maximum: 20_000,
+        },
       },
+    });
+    expect(
+      (fetchDefinition?.function.parameters.properties as Record<
+        string,
+        Record<string, unknown>
+      >).maxCharacters,
+    ).not.toHaveProperty("default");
+    expect(toolset.bedrockDefinitions()[1]?.toolSpec.inputSchema.json).toMatchObject({
+      required: ["url"],
+      properties: { maxCharacters: { default: 5_000 } },
     });
   });
 
@@ -244,6 +278,15 @@ describe("LLM toolset", () => {
       .execute("fetch_content", { url: "https://example.com/long" });
 
     expect(output).toMatchObject({
+      type: "fetch_content_result",
+      document: { text: "a".repeat(5_000), truncated: true },
+    });
+    await expect(
+      client.toolset().execute("fetch_content", {
+        url: "https://example.com/long",
+        maxCharacters: null,
+      }),
+    ).resolves.toMatchObject({
       type: "fetch_content_result",
       document: { text: "a".repeat(5_000), truncated: true },
     });

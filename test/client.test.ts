@@ -36,6 +36,25 @@ function fetched(url: string, body: string): SafeFetchResult {
 }
 
 describe("llm-fetch client vertical flow", () => {
+  it("supports read-only clients and omits unavailable search tools", async () => {
+    const client = createLlmFetch({
+      fetcher: vi.fn(async (url: string) => fetched(url, ARTICLE)),
+    });
+
+    await expect(
+      client.read({ url: "https://example.com/article" }),
+    ).resolves.toMatchObject({ title: "Fast TypeScript Retrieval" });
+    await expect(client.search({ query: "missing provider" })).rejects.toMatchObject({
+      code: "CONFIG_MISSING",
+    });
+    expect(
+      client
+        .toolset()
+        .openaiResponsesDefinitions()
+        .map((definition) => definition.name),
+    ).toEqual(["fetch_content"]);
+  });
+
   it("runs search, safe read, extraction, guard, and provenance", async () => {
     const provider: SearchProvider = {
       name: "fixture",
@@ -114,6 +133,145 @@ describe("llm-fetch client vertical flow", () => {
     expect(result.documents[0]?.url).toBe("https://example.com/safe");
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]?.error.code).toBe("GUARD_DENIED");
+    expect(result.failures[0]?.error.guardDecision).toBe("require_approval");
+    expect(result.failures[0]?.error.warningCategories).toContain(
+      "hidden_instruction",
+    );
+    expect(JSON.stringify(result.failures[0]?.error)).not.toContain(
+      "ignore previous instructions",
+    );
+  });
+
+  it("returns completed documents when the overall deadline interrupts later work", async () => {
+    const provider: SearchProvider = {
+      name: "fixture",
+      async search() {
+        return [
+          {
+            provider: "fixture",
+            rank: 1,
+            title: "Fast",
+            url: "https://fast.example/article",
+            snippet: "Fast result",
+          },
+          {
+            provider: "fixture",
+            rank: 2,
+            title: "Slow",
+            url: "https://slow.example/article",
+            snippet: "Slow result",
+          },
+        ];
+      },
+    };
+    const client = createLlmFetch({
+      search: provider,
+      fetcher: vi.fn(async (url: string) => {
+        if (url.includes("slow.example")) {
+          return new Promise<SafeFetchResult>(() => undefined);
+        }
+        return fetched(url, ARTICLE);
+      }),
+      searchAndReadTimeoutMs: 20,
+      readTimeoutMs: 100,
+    });
+
+    const result = await client.searchAndRead({
+      query: "partial deadline",
+      concurrency: 2,
+    });
+    expect(result.timedOut).toBe(true);
+    expect(result.documents).toHaveLength(1);
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "overall_timeout" }),
+      ]),
+    );
+  });
+
+  it("distinguishes per-host queued URLs that never started", async () => {
+    const provider: SearchProvider = {
+      name: "fixture",
+      async search() {
+        return [1, 2, 3].map((rank) => ({
+          provider: "fixture",
+          rank,
+          title: `Result ${rank}`,
+          url: `https://same.example/article-${rank}`,
+          snippet: "Result",
+        }));
+      },
+    };
+    const client = createLlmFetch({
+      search: provider,
+      fetcher: vi.fn(() => new Promise<SafeFetchResult>(() => undefined)),
+      searchAndReadTimeoutMs: 10,
+      readTimeoutMs: 100,
+    });
+    const result = await client.searchAndRead({
+      query: "per host",
+      concurrency: 3,
+      perHostConcurrency: 1,
+    });
+    expect(result.failures.filter((failure) => failure.kind === "overall_timeout")).toHaveLength(1);
+    expect(result.failures.filter((failure) => failure.kind === "not_started")).toHaveLength(2);
+  });
+
+  it("treats a trailing DNS dot as the same host for concurrency limits", async () => {
+    const provider: SearchProvider = {
+      name: "fixture",
+      async search() {
+        return [
+          {
+            provider: "fixture",
+            rank: 1,
+            title: "First",
+            url: "https://same.example/one",
+            snippet: "First result",
+          },
+          {
+            provider: "fixture",
+            rank: 2,
+            title: "Second",
+            url: "https://same.example./two",
+            snippet: "Second result",
+          },
+        ];
+      },
+    };
+    let active = 0;
+    let maximumActive = 0;
+    const client = createLlmFetch({
+      search: provider,
+      fetcher: vi.fn(async (url: string) => {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 10);
+          timer.unref();
+        });
+        active -= 1;
+        return fetched(url, ARTICLE);
+      }),
+    });
+    const result = await client.searchAndRead({
+      query: "canonical host",
+      concurrency: 2,
+      perHostConcurrency: 1,
+    });
+    expect(result.documents).toHaveLength(2);
+    expect(maximumActive).toBe(1);
+  });
+
+  it("rejects deeply nested HTML with a typed public error", async () => {
+    const nested = `${"<div>".repeat(2_000)}text${"</div>".repeat(2_000)}`;
+    const client = createLlmFetch({
+      fetcher: vi.fn(async (url: string) => fetched(url, nested)),
+      readTimeoutMs: 100,
+    });
+    await expect(
+      client.read({ url: "https://example.com/deep" }),
+    ).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
   });
 
   it("guards the returned document title as well as its body", async () => {
@@ -137,6 +295,20 @@ describe("llm-fetch client vertical flow", () => {
     ).rejects.toMatchObject({
       code: "GUARD_DENIED",
     });
+  });
+
+  it("preserves a guarded Open Graph title for document metadata", async () => {
+    const withOpenGraphTitle = ARTICLE.replace(
+      "<title>Fast TypeScript Retrieval</title>",
+      '<meta property="og:title" content="Open Graph Article"><title>Fallback title</title>',
+    );
+    const client = createLlmFetch({
+      fetcher: vi.fn(async (url: string) => fetched(url, withOpenGraphTitle)),
+    });
+
+    await expect(
+      client.read({ url: "https://example.com/open-graph-title" }),
+    ).resolves.toMatchObject({ title: "Open Graph Article" });
   });
 
   it("deduplicates concurrent reads and caches completed documents", async () => {
@@ -410,6 +582,81 @@ describe("llm-fetch client vertical flow", () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it("reduces the default per-host limit when total concurrency is one", async () => {
+    const client = createLlmFetch({
+      search: {
+        name: "fixture",
+        async search() {
+          return [
+            {
+              provider: "fixture",
+              rank: 1,
+              title: "Single",
+              url: "https://example.com/single",
+              snippet: "Single result",
+            },
+          ];
+        },
+      },
+      fetcher: vi.fn(async (url: string) => fetched(url, ARTICLE)),
+    });
+    await expect(
+      client.searchAndRead({ query: "single worker", concurrency: 1 }),
+    ).resolves.toMatchObject({ documents: [{ source: { rank: 1 } }] });
+  });
+
+  it("validates provider-neutral locale and per-host limits before search", async () => {
+    const search = vi.fn(async () => []);
+    const client = createLlmFetch({
+      search: { name: "fixture", search },
+      fetcher: vi.fn(),
+    });
+    await expect(
+      client.search({ query: "valid", language: "japanese" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      client.search({ query: "valid", region: "JPN" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      client.search({ query: "valid", locale: "ja-JP", language: "ja" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      client.searchAndRead({
+        query: "valid",
+        concurrency: 2,
+        perHostConcurrency: 3,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it("rejects options and response types that have no extractor", async () => {
+    expect(() => createLlmFetch(null as never)).toThrowError(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
+    expect(() =>
+      createLlmFetch({ retrieval: { allowedContentTypes: ["application/json"] } }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+    expect(() =>
+      createLlmFetch({
+        retrieval: { allowedContentTypes: "text/html" as never },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+    expect(() =>
+      createLlmFetch({ search: null as never }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+
+    const client = createLlmFetch({
+      fetcher: vi.fn(async (url: string) => ({
+        ...fetched(url, ARTICLE),
+        finalUrl: "http://127.0.0.1/private",
+      })),
+    });
+    await expect(
+      client.read({ url: "https://example.com/article" }),
+    ).rejects.toMatchObject({ code: "UPSTREAM_HTTP" });
+  });
+
   it("rejects malformed provider results at the public boundary", async () => {
     const provider = {
       name: "broken",
@@ -458,7 +705,7 @@ describe("llm-fetch client vertical flow", () => {
     });
   });
 
-  it("returns one structured timeout for the combined operation", async () => {
+  it("returns completed work and structured failures on combined timeout", async () => {
     const provider: SearchProvider = {
       name: "fixture",
       async search() {
@@ -480,11 +727,15 @@ describe("llm-fetch client vertical flow", () => {
       searchAndReadTimeoutMs: 5,
     });
 
-    await expect(
-      client.searchAndRead({ query: "bounded" }),
-    ).rejects.toMatchObject({
-      code: "TIMEOUT",
-      retryable: true,
+    await expect(client.searchAndRead({ query: "bounded" })).resolves.toMatchObject({
+      documents: [],
+      timedOut: true,
+      failures: [
+        {
+          kind: "overall_timeout",
+          error: { code: "TIMEOUT", retryable: true },
+        },
+      ],
     });
   });
 
@@ -611,6 +862,32 @@ describe("llm-fetch client vertical flow", () => {
     ).rejects.toMatchObject({
       code: "UPSTREAM_HTTP",
     });
+  });
+
+  it("rejects ambiguous or conflicting custom fetcher headers", async () => {
+    const base = fetched("https://example.com/article", ARTICLE);
+    const duplicateHeaders = createLlmFetch({
+      fetcher: vi.fn(async () => ({
+        ...base,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "content-type": "text/html; charset=utf-8",
+        },
+      })),
+    });
+    await expect(
+      duplicateHeaders.read({ url: "https://example.com/article" }),
+    ).rejects.toMatchObject({ code: "UPSTREAM_HTTP" });
+
+    const conflictingType = createLlmFetch({
+      fetcher: vi.fn(async () => ({
+        ...base,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })),
+    });
+    await expect(
+      conflictingType.read({ url: "https://example.com/article" }),
+    ).rejects.toMatchObject({ code: "UPSTREAM_HTTP" });
   });
 
   it("rejects a custom retriever response for a different requested URL", async () => {
