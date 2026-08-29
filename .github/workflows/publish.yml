@@ -62,6 +62,7 @@ jobs:
         run: node -e "const p=require('./package.json');if(p.private)throw new Error('package.json is still private')"
       - name: Run the DuckDuckGo release canary
         run: npm run canary:duckduckgo
+        continue-on-error: true
       - name: Run the Brave release canary
         run: node scripts/provider-canary.mjs brave
         env:

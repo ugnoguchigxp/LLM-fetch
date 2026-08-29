@@ -122,13 +122,16 @@ if (requireCanaries) {
       "Current-commit provider canary evidence requires a clean worktree.",
     );
   }
-  const missingOrFailed = ["duckduckgo", "brave"].filter(
-    (provider) => canaries[provider]?.status !== "passed",
+  const missing = ["duckduckgo", "brave"].filter(
+    (provider) => canaries[provider] === undefined,
   );
-  if (missingOrFailed.length > 0) {
+  if (missing.length > 0) {
     throw new Error(
-      `Current-commit provider canary evidence is missing or failed: ${missingOrFailed.join(", ")}.`,
+      `Current-commit provider canary evidence is missing: ${missing.join(", ")}.`,
     );
+  }
+  if (canaries.brave?.status !== "passed") {
+    throw new Error("The Brave provider release canary did not pass.");
   }
 }
 process.stdout.write(

@@ -1021,7 +1021,7 @@ npm pack --dry-run --json
 | --- | --- | --- |
 | COR-02 | 完了 | 候補が4件以下の高速経路でも`body`を必ず比較し、短い`article`と長い候補外`section`が兄弟になる回帰testを追加 |
 | RUN-01 | 完了 | `engines.node`、README、開発文書、CIの最低Node.jsを20.19へ統一し、CIで20.19.0を固定検証 |
-| REL-03 | 完了 | 公開jobでDuckDuckGo / Brave canaryを必須実行し、現commit・clean worktreeの成功証跡がそろわなければpublishを停止 |
+| REL-03 | 完了 | 公開jobでDuckDuckGo / Brave canaryを必須実行し、現commit・clean worktreeの証跡欠落またはBrave失敗ならpublishを停止。experimentalなDuckDuckGoの型付き失敗は承認者が確認できる形で保持 |
 | EVAL-02 | 完了 | Guard reportへ独立seed数を追加し、attack 30件以上・benign 25件以上をrelease gate化 |
 | DOC-06 | 完了 | README、release runbook、実装計画、CI/CDの完了状態と対応runtimeを同期 |
 | GOV-01 | 完了 | `main`と`v*`のrulesetへNode.js 20.19とBun 1.3.14 / 1.4を必須checkとして追加 |

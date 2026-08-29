@@ -39,6 +39,10 @@ Decision recorded 2026-08-29 by the package maintainer:
   its result count or its typed failure code. API keys, queries containing
   secrets, response bodies, and stack traces must never enter logs or release
   artifacts.
+- Brave must pass because it is the production recommendation. A DuckDuckGo
+  challenge or other typed failure may proceed to maintainer review because the
+  provider is explicitly experimental, but the current-commit evidence record
+  must still exist.
 
 ## One-time package-name bootstrap
 
@@ -114,8 +118,10 @@ an unverified build the default release:
 The GitHub Release starts `.github/workflows/publish.yml`. The workflow repeats
 verification, checks the tag in both jobs, waits for the `npm` Environment
 approval, runs both provider canaries with current-commit evidence, then
-publishes with OIDC provenance. Missing, failed, stale, or dirty-worktree canary
-evidence stops publication.
+publishes with OIDC provenance. Missing, stale, or dirty-worktree evidence and
+any Brave failure stop publication. A typed DuckDuckGo failure is retained for
+maintainer review without turning an experimental provider outage into a
+release-infrastructure failure.
 
 After completion:
 
