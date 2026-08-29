@@ -7,13 +7,13 @@
 | 対象 | `llm-fetch` |
 | 目標 | 公開npmパッケージ `v0.1.0` |
 | 基準日 | 2026-08-29 |
-| 現在の判定 | Windows / Chromiumを含むCI/CDは解決済み。公開は初回npm登録、Trusted Publisher設定、provenance確認、明示承認までNO-GO |
+| 現在の判定 | Windows / Chromiumを含むCI/CDは解決済み。公開はメンテナーが検証済みのローカルcheckoutから手動で実行する |
 | この文書の役割 | コード監査で確認した課題を、実装順序・完了条件・検証方法へ変換する |
 | 関連文書 | [plan.md](./plan.md)、[README.md](./README.md)、[README.ja.md](./README.ja.md)、[SECURITY.md](./SECURITY.md) |
 
 `plan.md`は製品の設計経緯と全体仕様を保持する。本書は、公開前の残作業と品質改善を実行するための計画として使用する。
 
-2026-08-29の再評価で見つかった本文抽出回帰、secret管理、公開操作の保護、評価コーパス規模、Provider方針、source map、保守性、benchmark安定性は第11節の実装で解消した。その後の再レビューで確認した少数候補時の本文抽出回帰、Node.js対応下限、公開時canary、コーパスの独立性、文書とCI保護設定の不整合は第12節で解消する。Windows packed consumerとChromium sandboxのCI/CDは成功済みであり、初回npm登録とprovenance確認だけが外部ゲートとして残る。
+2026-08-29の再評価で見つかった本文抽出回帰、secret管理、評価コーパス規模、Provider方針、source map、保守性、benchmark安定性は第11節の実装で解消した。その後の再レビューで確認した少数候補時の本文抽出回帰、Node.js対応下限、コーパスの独立性、文書とCI保護設定の不整合は第12節で解消した。Windows packed consumerとChromium sandboxのCI/CDも成功済みである。npm公開は自動化せず、`docs/RELEASE.md`の手順に従ってローカルから明示的に実行する。
 
 ## 2. 目標と完了状態
 
@@ -23,7 +23,7 @@
 2. 検査対象を切り捨てた場合は必ず安全側の判定になり、利用者が検査限界を確認できる。
 3. Node.js 20.19 / 22 / 24およびBun 1.3.14 / 1.4で、対象となるESM、CommonJS、型定義、core-only構成が動作する。
 4. Chromiumを使う統合テストが、独立したsandbox環境で安定して成功する。
-5. npm上の最終パッケージ名、リポジトリ情報、ライセンス、provenance、公開手順が一致する。
+5. npm上の最終パッケージ名、リポジトリ情報、ライセンス、version、公開手順が一致する。
 6. OpenAI Responses API、OpenAI Chat Completions、Amazon Bedrockの対応範囲がAPI名と文書から判別できる。
 7. 外部Providerの利用条件、best-effort性、データ送信、運用上の制約が公開文書に記載されている。
 8. unit、security、consumer、browser、性能の各テストがリリースゲートとして自動実行される。
@@ -47,7 +47,7 @@
 | G1: Package candidate | PKG-01、PKG-02、CI-01、CI-02が完了 | `0.1.0-alpha.1`をpackしてconsumer検証可能 |
 | G2: Public API freeze | API-01〜API-07、EXT-01が完了 | `0.1.0-rc.1`のAPIを固定可能 |
 | G3: Release candidate | TST-01〜TST-06、PERF-01、DOC-01〜DOC-04が完了 | 公開可否を再判定可能 |
-| G4: Public release | 全CI成功、外部条件確認、provenance付きdry-run、明示的な公開承認 | `v0.1.0`をpublish |
+| G4: Public release | 全CI成功、pack内容確認、live canary成功、明示的な公開承認 | `v0.1.0`を手動publish |
 
 G4は自動的に実行しない。npmへの実publishは、最終パッケージ名と公開内容を人が確認した後に明示的に開始する。
 
@@ -140,25 +140,24 @@ G4は自動的に実行しない。npmへの実publishは、最終パッケー�
 - 仮scopeが公開物とリポジトリ内に残っていない。
 - `private: true`は本番publish直前まで維持する。
 
-#### PKG-02: Trusted Publishingとprovenance
+#### PKG-02: 手動publishの保護
 
 優先度: P0
 規模: M
 
 実装内容:
 
-- npm Trusted PublisherをGitHub Actionsに関連付ける。
-- tagまたはGitHub Releaseを起点とするpublish workflowを追加する。
-- workflowへ最小権限の`contents: read`と`id-token: write`を設定する。
-- publish jobの前にverify、pack内容、versionとtagの一致を確認する。
-- npm tokenを長期secretとして保存しない。
-- npm environmentに承認者を設定し、誤publishを防ぐ。
+- GitHub Actionsから`npm publish`を実行しない。
+- `private: true`をrelease commit直前まで維持する。
+- 手動publish前にverify、pack内容、versionとtagの一致を確認する。
+- npm認証と2FAはメンテナーのローカル環境で対話的に行う。
+- npm tokenやProvider API keyをリポジトリやGitHubへ保存しない。
 
 完了条件:
 
-- publish workflowのdry-runが成功する。
-- provenance statementが対象GitHubリポジトリを示す。
-- tagとpackage versionが不一致の場合はpublish前に失敗する。
+- `npm pack --dry-run --json`が成功する。
+- 自動publish workflowが存在しない。
+- 手動publishの事前・事後確認が`docs/RELEASE.md`に記録されている。
 
 #### CI-01: Chromium sandbox対応
 
@@ -702,7 +701,7 @@ npm run bench:ci
 5. core-only環境に`playwright-core`が入らないことを確認する。
 6. Chromium環境でHTTP、auto、alwaysを各1件実行する。
 7. Brave live smokeとDuckDuckGo canaryを実行する。
-8. npm publish dry-runとprovenance対象リポジトリを確認する。
+8. `npm pack --dry-run --json`の内容を確認する。
 9. READMEのinstall例を最終package名でコピー実行する。
 10. 公開承認後にのみtag / release / publishを実行する。
 
@@ -716,7 +715,7 @@ npm run bench:ci
 | Chromium sandboxがCI環境に依存する | CI不安定 | version固定の非root containerと3回連続成功をゲートにする |
 | DuckDuckGoの画面構造が変わる | 検索停止 | frozen fixture、scheduled canary、Brave fallbackを用意する |
 | benchmarkがrunner負荷で揺れる | 誤った回帰判定 | 専用条件、複数sample、相対baseline、p95を用いる |
-| publish workflowの誤作動 | 誤公開 | npm environment承認、tag/version検査、`private`解除を最終工程にする |
+| 手動publishの対象間違い | 誤公開 | clean checkout、tag/version、pack内容、`npm whoami`を直前確認し、`private`解除を最終工程にする |
 
 ## 9. 規模の目安
 
@@ -745,8 +744,7 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 - [x] README英語版・日本語版・SECURITYの記述が実装と一致している
 - [x] production / development dependency auditに未解決の重大問題がない
 - [x] `publint`とAre The Types Wrongが成功している
-- [x] npm publish dry-runが成功している
-- [ ] provenanceのリポジトリ情報が正しい
+- [x] npm packageのdry-runが成功している
 - [x] CHANGELOGとrelease noteが用意されている
 - [ ] 明示的な公開承認を得ている
 
@@ -760,7 +758,7 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 
 - ローカルsecretの誤コミット防止。
 - 入れ子になった本文候補の抽出回帰修正。
-- npm公開操作のtag、承認、初回publish、Trusted Publishingの保護。
+- npm公開操作のtag、承認、初回手動publishの手順化。
 - Context Guard評価コーパスの拡充。
 - DuckDuckGo / Braveの公開方針とcanary記録。
 - リリースチェックリストと実測結果の整合。
@@ -772,7 +770,7 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 - Linux Chromium sandbox用のseccomp / user namespace設定。
 - 上記を含むGitHub Actionsの再実行と全job成功判定。
 
-`.github/workflows/publish.yml`はCI検証ではなくnpmへの外部書き込みを制御するため、本節の対象に含める。
+npmへの外部書き込みはGitHub Actionsに持たせず、手動release runbookを本節の対象に含める。
 
 ### 11.2 優先順位と依存関係
 
@@ -780,8 +778,8 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 | ---: | --- | --- | --- | --- | --- |
 | 1 | SAFE-01 | P0 | S | `.env`とlocal secretの誤コミット防止 | なし |
 | 2 | COR-01 | P0 | M | 本文候補スコアリングの回帰修正 | SAFE-01 |
-| 3 | REL-01 | P0 | M | 実publish経路のtag・承認保護 | SAFE-01 |
-| 4 | REL-02 | P0 | M + 外部設定 | 初回publishとTrusted Publishingの確立 | REL-01 |
+| 3 | REL-01 | P0 | M | 手動publish経路のtag・承認保護 | SAFE-01 |
+| 4 | REL-02 | P0 | S | 初回手動publish手順の確立 | REL-01 |
 | 5 | EVAL-01 | P1 | M | Guard評価コーパスの拡充 | なし |
 | 6 | PROV-01 | P1 | S + 外部判断 | Provider canaryと公開方針の確定 | SAFE-01 |
 | 7 | DOC-05 | P1 | S | リリース記録とチェックリストの証拠連動 | COR-01、REL-01、EVAL-01、PROV-01 |
@@ -804,7 +802,7 @@ P0とP1を`v0.1.0`公開前に完了する。P2はP0/P1の完了を遅らせな�
 - `.gitignore`へ`.env`とlocal overrideを追加する。
 - 共有可能な変数名だけを記載した`.env.example`を追加し、値は空または明示的なplaceholderにする。
 - READMEの開発手順へ、`.env`をcommitしないことと`node --env-file=.env`を使うlocal canary例を追加する。
-- CI secretはGitHub Actions secretからのみ注入し、fork由来のworkflowへ渡さない。
+- Provider secretはローカル`.env`からのみ読み込み、CIへ必須化しない。
 - secret値そのものをrelease report、test failure、debug logへ出さない。
 
 完了条件:
@@ -845,41 +843,37 @@ P0とP1を`v0.1.0`公開前に完了する。P2はP0/P1の完了を遅らせな�
 - HTML 1MiB抽出＋Guardのp95が承認済み閾値内に収まる。
 - 新しい再帰処理や候補数に比例する全文再走査を追加しない。
 
-### 11.5 REL-01: 実publish経路のtag・承認保護
+### 11.5 REL-01: 手動publish経路のtag・承認保護
 
 実装内容:
 
-- `workflow_dispatch`はdry-run専用にする。手動実行から直接`npm publish`できる条件を削除する。
-- 実publishはGitHub Releaseの`published` eventだけを起点にする。
-- verify jobとpublish jobの両方で、`v<package version>`と`package.json`の一致を検査する。
-- release workflowではpackage manager cacheを無効にする。
-- npm CLIがTrusted Publishingの最低要件を満たすことを明示的に検査する。
-- GitHubの`npm` Environmentを作成し、required reviewerと意図したbranch / tagだけを許可する。
-- `main`と`v*` tagへrulesetを設定し、必須check成功前のrelease作成を防ぐ。
+- GitHub Actionsには`npm publish`を実行するworkflowを置かない。
+- `private: true`をrelease commitまで維持し、意図しないpublishを防ぐ。
+- ローカルで`v<package version>`と`package.json`の一致を確認する。
+- `npm ci`、verify、benchmark、audit、canary、package dry-runをpublish前に実行する。
+- npm認証と2FAはメンテナーが対話的に処理する。
+- `main`と`v*` tagのrulesetで通常のCI品質を維持する。
 
 完了条件:
 
-- 手動dispatchで`dry_run=false`相当を指定してもpublish jobが起動しない。
-- tag不一致、`private: true`、古いnpm CLIのいずれでもpublish前に失敗する。
-- npm Environmentの承認なしではpublish jobが開始しない。
+- 自動publish workflowが存在しない。
 - `private: true`はほかの全ゲートが完了するまで維持する。
+- 手動publishコマンドと事後検証がrelease runbookへ明記されている。
 
-### 11.6 REL-02: 初回publishとTrusted Publishing
+### 11.6 REL-02: 初回手動publish
 
 実装内容:
 
-- 未登録の`llm-fetch`を最初に登録する手順と認証方式を決める。
-- 初回publishが対話的2FAまたは短命なgranular tokenを必要とする場合、実施者、失効手順、監査記録を決める。
-- 初回登録直後に、GitHub repository、`publish.yml`、`npm` EnvironmentをTrusted Publisherとして設定する。
-- Trusted Publisher成功後は従来tokenを失効し、可能ならtoken publishを禁止する。
-- provenanceが公開GitHub repositoryとrelease commitを指すことを確認する。
-- 可能であれば直接publishではなくstaged publishingを採用し、2FA承認後に公開する。
+- 未登録の`llm-fetch`を、検証済みrelease commitから直接登録する。
+- `npm login`、`npm whoami`、`npm publish --access public`をローカルで明示的に実行する。
+- 初回publishも通常releaseも、npmアカウントの2FA要件に従う。
+- 公開後にversion、dist-tag、integrity、consumer installを確認する。
 
 完了条件:
 
-- 初回publishのbootstrap手順がrelease runbookへ記録される。
-- 2回目以降は長期write tokenなしで公開できる。
-- npm上のpackage、GitHub Release、tag、commit、version、provenanceが一致する。
+- 初回publishの手順がrelease runbookへ記録される。
+- GitHub ActionsやGitHub Secretsを公開の前提にしない。
+- npm上のpackage、GitHub Release、tag、commit、versionが一致する。
 
 ### 11.7 EVAL-01: Context Guard評価コーパスの拡充
 
@@ -1000,8 +994,8 @@ npm pack --dry-run --json
 | --- | --- | --- |
 | SAFE-01 | 完了 | `.env` / `.env.*`を除外し、空値の`.env.example`を追加。canaryの標準出力をprovider名と件数に限定した |
 | COR-01 | 完了 | 候補の祖先を除外せず、単一DOM走査のrange / prefix indexで全候補を評価。teaserと長い兄弟本文、link密度の回帰testを追加した |
-| REL-01 | 完了 | 手動workflowを検証専用にし、npm 11.6.4を固定。`npm` Environment、`main` / `v*` ruleset、tag/version・private gateを設定した |
-| REL-02 | repository側完了 | 初回`0.0.0` bootstrap、Trusted Publisher設定、token失効、公開後確認を`docs/RELEASE.md`へ記録。実registry操作は公開承認後に行う |
+| REL-01 | 完了 | 自動publish workflowを削除し、npm 11.6.4を固定。`main` / `v*` ruleset、tag/version・private確認を維持した |
+| REL-02 | repository側完了 | 初回publishを含む明示的なローカル公開手順と公開後確認を`docs/RELEASE.md`へ記録。実registry操作は公開承認後に行う |
 | EVAL-01 | 完了 | attack 155件（独立seed 31件）、benign 125件（独立seed 25件）。attack allow 0、最低判定未達0、finding category不一致0、benign deny 0、approval 0を確認した |
 | PROV-01 | 完了 | 2026-08-29にDuckDuckGo 1件、Brave 3件を取得。DuckDuckGoをexperimental / best-effort、Brave / reviewed customを本番推奨に確定した |
 | DOC-05 | 完了 | release reportへGit commit / clean状態、Guard集計、benchmark、provider canary記録を追加した |
@@ -1011,7 +1005,7 @@ npm pack --dry-run --json
 
 ローカル最終検証では20 test file、246 test（239成功、7明示skip）を確認した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportを公開候補ごとに実行する。packはESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証する。coverage、benchmark、pack size、canary日時は、対象commitとclean状態が一致する`.release-evidence/`およびrelease reportを正本とする。
 
-残作業はrepository改修ではなく、公開時の外部ゲートである。`llm-fetch@0.0.0`の初回登録とTrusted Publisher設定、`npm` EnvironmentへのBrave canary secret設定、`private: false`のrelease commit、`v0.1.0` provenance、明示的な公開承認を順に確認する。それまではnpm publishを実行しない。
+残作業はrepository改修ではなく、手動公開操作である。ローカル`.env`によるBrave canary、`private: false`のrelease commit、tag/version一致、pack内容、明示的な公開承認を順に確認した後、メンテナーが`npm publish --access public`を実行する。それまではnpm publishを実行しない。
 
 ## 12. 最終再レビュー後の改善（2026-08-29）
 
@@ -1021,14 +1015,14 @@ npm pack --dry-run --json
 | --- | --- | --- |
 | COR-02 | 完了 | 候補が4件以下の高速経路でも`body`を必ず比較し、短い`article`と長い候補外`section`が兄弟になる回帰testを追加 |
 | RUN-01 | 完了 | `engines.node`、README、開発文書、CIの最低Node.jsを20.19へ統一し、CIで20.19.0を固定検証 |
-| REL-03 | 完了 | 公開jobでDuckDuckGo / Brave canaryを必須実行し、現commit・clean worktreeの証跡欠落またはBrave失敗ならpublishを停止。experimentalなDuckDuckGoの型付き失敗は承認者が確認できる形で保持 |
+| REL-03 | 完了 | 手動公開前にDuckDuckGo / Brave canaryを実行し、現commit・clean worktreeの証跡欠落またはBrave失敗ならpublishしない。experimentalなDuckDuckGoの型付き失敗はメンテナーが確認できる形で保持 |
 | EVAL-02 | 完了 | Guard reportへ独立seed数を追加し、attack 30件以上・benign 25件以上をrelease gate化 |
 | DOC-06 | 完了 | README、release runbook、実装計画、CI/CDの完了状態と対応runtimeを同期 |
 | GOV-01 | 完了 | `main`と`v*`のrulesetへNode.js 20.19とBun 1.3.14 / 1.4を必須checkとして追加 |
 
 ### 12.2 公開判定
 
-repository内の既知のP1改修とCI/CD整備は完了とする。npm公開は、初回package名登録、Trusted Publisher設定、`npm` Environmentへの`BRAVE_SEARCH_API_KEY`登録、release commitの`private: false`、tag/version一致、provenance、明示承認を満たすまでNO-GOとする。
+repository内の既知のP1改修とCI/CD整備は完了とする。npm公開は、ローカルBrave canary、release commitの`private: false`、tag/version一致、package内容確認、明示承認を満たした後に、メンテナーが手動で実行する。
 
 ### 12.3 検証結果
 
@@ -1039,5 +1033,5 @@ repository内の既知のP1改修とCI/CD整備は完了とする。npm公開は
 - Guard corpusはattack 155件・独立seed 31件、benign 125件・独立seed 25件で、見逃し・category不一致・deny・approvalはいずれも0件だった。
 - DuckDuckGo canaryは2件、Brave canaryは3件を取得した。
 - `actionlint`、production / development audit、packaged ESM / CommonJS / type / core-only consumer、`publint`、Are The Types Wrongが成功した。
-- `--require-canaries`はdirty worktreeの証跡を拒否することを確認した。release workflowではclean checkout上で両canaryを再実行する。
+- `--require-canaries`はdirty worktreeの証跡を拒否することを確認した。公開前はcleanなローカルcheckout上で両canaryを再実行する。
 - GitHubの`Protect main`と`Protect release tags` rulesetにNode.js 20.19 / 22 / 24、Bun 1.3.14 / 1.4、Windows、development audit、Chromiumを必須checkとして設定した。
