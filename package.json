@@ -1,7 +1,6 @@
 {
   "name": "llm-fetch",
   "version": "0.1.0",
-  "private": true,
   "description": "Fast, safe web search and content retrieval for LLM applications",
   "keywords": [
     "llm",
@@ -78,7 +77,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src test bench scripts",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run verify",
+    "prepublishOnly": "npm run verify:publish",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
@@ -88,6 +87,7 @@
     "verify:licenses": "node scripts/verify-licenses.mjs",
     "verify:npm-version": "node scripts/verify-npm-version.mjs",
     "verify:package": "node scripts/verify-package.mjs",
+    "verify:publish": "npm run lint && npm run typecheck && npm test && npm run test:coverage && npm run verify:licenses && npm run verify:npm-version",
     "verify:publint": "npm run build && publint",
     "verify:release-report": "node scripts/release-report.mjs",
     "verify:types": "attw --pack ."

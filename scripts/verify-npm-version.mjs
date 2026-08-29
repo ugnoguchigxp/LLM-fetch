@@ -21,7 +21,6 @@ if (!actual) throw new Error(`Could not parse npm version: ${actualVersion}`);
 
 const expectedVersion = expected.slice(1).map(Number);
 const actualParts = actual.slice(1).map(Number);
-const minimumTrustedPublishingVersion = [11, 5, 1];
 const compare = (left, right) => {
   for (let index = 0; index < 3; index += 1) {
     const difference = (left[index] ?? 0) - (right[index] ?? 0);
@@ -29,15 +28,10 @@ const compare = (left, right) => {
   }
   return 0;
 };
-if (compare(actualParts, minimumTrustedPublishingVersion) < 0) {
-  throw new Error(
-    `npm ${actualVersion} is too old for Trusted Publishing; 11.5.1 or later is required.`,
-  );
-}
 if (compare(actualParts, expectedVersion) !== 0) {
   throw new Error(
     `npm ${actualVersion} does not match packageManager npm@${expectedVersion.join(".")}.`,
   );
 }
 
-process.stdout.write(`npm ${actualVersion} verified for Trusted Publishing.\n`);
+process.stdout.write(`npm ${actualVersion} matches packageManager.\n`);
