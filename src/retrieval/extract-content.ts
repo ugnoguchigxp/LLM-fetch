@@ -163,6 +163,68 @@ interface CandidateTextIndex {
   text(range: CandidateRange): string;
 }
 
+const DIRECT_CANDIDATE_LIMIT = 4;
+
+function candidateMetrics(element: AnyNode): {
+  text: string;
+  paragraphCount: number;
+  linkTextLength: number;
+} {
+  type Entry = {
+    node: unknown;
+    insideLink: boolean;
+    blockTextVersion?: number;
+  };
+  const stack: Entry[] = [{ node: element, insideLink: false }];
+  const textParts: string[] = [];
+  const linkTextParts: string[] = [];
+  let textVersion = 0;
+  let paragraphCount = 0;
+
+  const separator = (): void => {
+    if (textParts.length > 0) textParts.push("\n\n");
+  };
+
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (!entry) break;
+    if (entry.blockTextVersion !== undefined) {
+      if (textVersion > entry.blockTextVersion) paragraphCount += 1;
+      separator();
+      continue;
+    }
+
+    const name = domNodeName(entry.node);
+    const block = BLOCK_ELEMENTS.has(name);
+    if (block) separator();
+    const data = domNodeData(entry.node);
+    if (data) {
+      textParts.push(data);
+      if (/\S/u.test(data)) textVersion += 1;
+      if (entry.insideLink) linkTextParts.push(data);
+    }
+
+    const children = domNodeChildren(entry.node);
+    if (block) {
+      stack.push({
+        node: entry.node,
+        insideLink: entry.insideLink,
+        blockTextVersion: textVersion,
+      });
+    }
+    const insideLink = entry.insideLink || name === "a";
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ node: children[index], insideLink });
+    }
+  }
+
+  return {
+    text: normalizePlainText(textParts.join("")),
+    paragraphCount,
+    linkTextLength: normalizeInlineText(linkTextParts.join(" ")).length,
+  };
+}
+
 function lowerBound<T>(
   values: readonly T[],
   target: number,
@@ -498,22 +560,48 @@ export function extractHtmlContent(
     });
   }
 
-  const index = buildCandidateTextIndex($, candidateSet);
-  for (const element of candidateElements) {
-    const range = index.ranges.get(element);
-    if (!range) continue;
-    const metrics = index.metrics(range);
-    const quality = scoreContentMetrics({
-      characterCount: metrics.characterCount,
-      paragraphCount: metrics.paragraphCount,
-      linkTextLength: metrics.linkTextLength,
-    });
-    if (quality.score > bestScore) {
-      bestScore = quality.score;
-      bestRange = range;
+  if (candidateElements.length <= DIRECT_CANDIDATE_LIMIT) {
+    let bodyCandidate: AnyNode | undefined;
+    const scoreDirectCandidate = (element: AnyNode): void => {
+      const metrics = candidateMetrics(element);
+      const quality = scoreContentMetrics({
+        characterCount: metrics.text.length,
+        paragraphCount: metrics.paragraphCount,
+        linkTextLength: metrics.linkTextLength,
+      });
+      if (quality.score > bestScore) {
+        bestScore = quality.score;
+        bestText = metrics.text;
+      }
+    };
+    for (const element of candidateElements) {
+      if (domNodeName(element) === "body") {
+        bodyCandidate = element;
+      } else {
+        scoreDirectCandidate(element);
+      }
     }
+    if (bodyCandidate && bestText.length < minCharacters) {
+      scoreDirectCandidate(bodyCandidate);
+    }
+  } else {
+    const index = buildCandidateTextIndex($, candidateSet);
+    for (const element of candidateElements) {
+      const range = index.ranges.get(element);
+      if (!range) continue;
+      const metrics = index.metrics(range);
+      const quality = scoreContentMetrics({
+        characterCount: metrics.characterCount,
+        paragraphCount: metrics.paragraphCount,
+        linkTextLength: metrics.linkTextLength,
+      });
+      if (quality.score > bestScore) {
+        bestScore = quality.score;
+        bestRange = range;
+      }
+    }
+    if (bestRange) bestText = index.text(bestRange);
   }
-  if (bestRange) bestText = index.text(bestRange);
 
   if (bestText.length < minCharacters) {
     throw new LlmFetchError(

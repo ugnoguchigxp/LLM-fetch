@@ -167,6 +167,22 @@ describe("bounded extraction decoding", () => {
     expect(result.text.length).toBeGreaterThanOrEqual(teaser.length + fullArticle.length);
   });
 
+  it("uses the bounded index when many candidates share an ancestor", () => {
+    const teaser = "Short nested teaser. ".repeat(8);
+    const fullArticle = "Complete indexed article paragraph. ".repeat(80);
+    const extraCandidates = Array.from(
+      { length: 5 },
+      (_, index) => `<div class="content">Small candidate ${index}.</div>`,
+    ).join("");
+    const html = `<html><body><main>
+      <article><p>${teaser}</p></article>
+      <section><p>${fullArticle}</p></section>
+    </main>${extraCandidates}</body></html>`;
+    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    expect(result.text).toContain(teaser.trim().slice(0, 100));
+    expect(result.text).toContain(fullArticle.trim().slice(0, 200));
+  });
+
   it("prefers paragraph content over a similarly sized link-heavy candidate", () => {
     const links = Array.from(
       { length: 20 },
