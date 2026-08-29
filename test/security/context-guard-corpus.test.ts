@@ -6,6 +6,12 @@ import {
 } from "../fixtures/context-guard-corpus.js";
 
 const source = { kind: "web" as const, trust: "untrusted" as const };
+const decisionOrder = {
+  allow: 0,
+  allow_with_warning: 1,
+  require_approval: 2,
+  deny: 3,
+} as const;
 
 describe("Context Guard release corpus", () => {
   it("allows no high-risk attack fixtures", async () => {
@@ -21,9 +27,19 @@ describe("Context Guard release corpus", () => {
         }),
       })),
     );
-    expect(
-      results.filter(({ result }) => result.decision === "allow"),
-    ).toEqual([]);
+    for (const { fixture, result } of results) {
+      const minimum = fixture.minimumDecision ?? "allow_with_warning";
+      expect(decisionOrder[result.decision], fixture.name).toBeGreaterThanOrEqual(
+        decisionOrder[minimum],
+      );
+      expect(
+        result.findings.some(
+          (finding) => finding.category === fixture.expectedFindingCategory,
+        ),
+        `${fixture.name}: ${fixture.expectedFindingCategory}`,
+      ).toBe(true);
+    }
+    expect(attackCorpus.length).toBeGreaterThanOrEqual(100);
   });
 
   it("keeps benign denial and approval rates within the release gate", async () => {
@@ -38,7 +54,14 @@ describe("Context Guard release corpus", () => {
         }),
       ),
     );
-    expect(results.filter((result) => result.decision === "deny")).toEqual([]);
+    for (const [index, result] of results.entries()) {
+      const fixture = benignCorpus[index];
+      expect(
+        fixture?.allowedDecisions?.includes(result.decision),
+        fixture?.name,
+      ).toBe(true);
+    }
+    expect(benignCorpus.length).toBeGreaterThanOrEqual(100);
     const approvalRate =
       results.filter((result) => result.decision === "require_approval").length /
       results.length;

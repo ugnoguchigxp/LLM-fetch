@@ -73,6 +73,8 @@ The normal path loads the DuckDuckGo search bootstrap and follows its VQD-bound 
 
 If that path fails with a retryable challenge, transport error, or response-format change, the provider tries DuckDuckGo's HTML and Lite representations. These are best-effort web interfaces, not a stable application API. Layout changes, rate limits, and bot challenges can still occur. The provider returns typed errors for those cases instead of reporting an empty result set.
 
+DuckDuckGo support is experimental and best effort. For production use that requires a contractual API and more predictable availability, use Brave Search or a reviewed custom provider.
+
 The implementation does not use SearXNG or include AGPL code. It does not solve CAPTCHAs or rotate proxies.
 
 ### Brave fallback
@@ -232,6 +234,12 @@ npm run verify
 npm pack --dry-run
 ```
 
+For a local Brave provider canary, copy `.env.example` to `.env`, set
+`BRAVE_SEARCH_API_KEY`, and run `npm run canary:brave`. The `.env` file is
+ignored by Git and must never be committed. The canary logs only the provider
+name and result count. DuckDuckGo can be checked with
+`npm run canary:duckduckgo` and does not require a secret.
+
 Run the installed-Chromium integration test explicitly:
 
 ```sh
@@ -240,6 +248,8 @@ LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 \
 ```
 
 `npm run verify` runs linting, type checks, unit/security tests, coverage gates, production-license checks, packed ESM/CommonJS/NodeNext/bundler consumers, `publint`, and Are The Types Wrong. The optional Chromium job runs separately in a non-root sandboxed container.
+
+Maintainer release preparation and the one-time npm package-name bootstrap are documented in [the release runbook](./docs/RELEASE.md).
 
 ## License
 

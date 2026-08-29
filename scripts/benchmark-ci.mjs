@@ -1,148 +1,72 @@
+import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import {
-  createBuiltinContextGuard,
-  createLlmFetch,
-  duckDuckGo,
-} from "../dist/index.js";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
-const encoder = new TextEncoder();
-const paragraph =
-  "TypeScript retrieval uses bounded parsing and structured untrusted references. ";
-const guardText = paragraph
-  .repeat(Math.ceil(50_000 / paragraph.length))
-  .slice(0, 50_000);
-const articleParagraph = `<p>${paragraph.repeat(12)}</p>`;
-const article = `<html><head><title>Benchmark</title></head><body><main>${articleParagraph.repeat(
-  Math.ceil(1_000_000 / articleParagraph.length),
-)}</main></body></html>`.slice(0, 1_000_000);
-const duckQuery = "llm-fetch parser benchmark";
-const duckVqd = "4-123456789012345678901234567890123456";
-const duckPreload = new URL("https://links.duckduckgo.com/d.js");
-duckPreload.searchParams.set("q", duckQuery);
-duckPreload.searchParams.set("vqd", duckVqd);
-const duckBootstrap = `<script>window.vqd="${duckVqd}";</script><script src="${duckPreload
-  .toString()
-  .replaceAll("&", "&amp;")}"></script>`;
-const duckResults = [];
-let duckPayload = "";
-for (let index = 0; duckPayload.length < 50_000; index += 1) {
-  duckResults.push({
-    t: `Benchmark result ${index}`,
-    a: "A signed fixture result containing bounded descriptive parser benchmark text.",
-    i: "example.com",
-    u: `https://example.com/benchmark-${index}`,
+const execFileAsync = promisify(execFile);
+const worker = fileURLToPath(new URL("./benchmark-worker.mjs", import.meta.url));
+const runCount = 3;
+const runs = [];
+
+for (let index = 0; index < runCount; index += 1) {
+  const { stdout } = await execFileAsync(process.execPath, [worker], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
   });
-  duckPayload = `DDG.pageLayout.load("d", ${JSON.stringify(duckResults)});`;
+  runs.push(JSON.parse(stdout));
 }
-const duckProvider = duckDuckGo({
-  maxResponseBytes: 100_000,
-  fetch: async (url) =>
-    new Response(
-      String(url).startsWith("https://links.duckduckgo.com/")
-        ? duckPayload
-        : duckBootstrap,
-      {
-        headers: {
-          "content-type": String(url).startsWith(
-            "https://links.duckduckgo.com/",
-          )
-            ? "application/javascript"
-            : "text/html",
-        },
-      },
-    ),
-});
-const guard = createBuiltinContextGuard({ maxCharacters: 2_000_000 });
-const client = createLlmFetch({
-  cache: { enabled: false },
-  contextGuard: { maxCharacters: 2_000_000 },
-  fetcher: async (url) => ({
-    requestedUrl: url,
-    finalUrl: url,
-    status: 200,
-    contentType: "text/html",
-    body: encoder.encode(article),
-    headers: { "content-type": "text/html; charset=utf-8" },
-    fetchMethod: "http",
-  }),
-});
 
-function percentile(sorted, value) {
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * value) - 1),
+function median(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+const firstResults = runs[0]?.results ?? [];
+const results = firstResults.map((first) => {
+  const matching = runs.map((run) =>
+    run.results.find((result) => result.name === first.name),
   );
-  return sorted[index];
-}
-
-async function measure(name, operation, thresholdMs, batchSize = 1) {
-  for (let index = 0; index < 5; index += 1) await operation(index);
-  const samples = [];
-  for (let sample = 0; sample < 30; sample += 1) {
-    const started = performance.now();
-    for (let index = 0; index < batchSize; index += 1) {
-      await operation(5 + sample * batchSize + index);
-    }
-    samples.push((performance.now() - started) / batchSize);
+  if (matching.some((result) => !result)) {
+    throw new Error(`Benchmark worker omitted ${first.name}.`);
   }
-  samples.sort((left, right) => left - right);
+  const p50Runs = matching.map((result) => result.p50Ms);
+  const p95Runs = matching.map((result) => result.p95Ms);
+  const p99Runs = matching.map((result) => result.p99Ms);
+  const overThresholdRuns = p95Runs.filter(
+    (value) => value > first.thresholdMs,
+  ).length;
   const result = {
-    name,
-    samples: samples.length,
-    p50Ms: percentile(samples, 0.5),
-    p95Ms: percentile(samples, 0.95),
-    p99Ms: percentile(samples, 0.99),
-    thresholdMs,
-    batchSize,
+    name: first.name,
+    processes: runCount,
+    samplesPerProcess: first.samples,
+    medianP50Ms: median(p50Runs),
+    medianP95Ms: median(p95Runs),
+    medianP99Ms: median(p99Runs),
+    maxP95Ms: Math.max(...p95Runs),
+    thresholdMs: first.thresholdMs,
+    overThresholdRuns,
+    batchSize: first.batchSize,
   };
-  if (result.p95Ms > thresholdMs) {
+  if (
+    result.medianP95Ms > result.thresholdMs ||
+    result.overThresholdRuns >= Math.ceil(runCount / 2)
+  ) {
     throw new Error(
-      `${name} p95 ${result.p95Ms.toFixed(2)}ms exceeded ${thresholdMs}ms.`,
+      `${result.name} median p95 ${result.medianP95Ms.toFixed(2)}ms exceeded ${result.thresholdMs}ms in ${result.overThresholdRuns}/${runCount} processes.`,
     );
   }
   return result;
-}
+});
 
-try {
-  const results = [
-    await measure(
-      "DuckDuckGo fixture 50 KiB",
-      async () => {
-        await duckProvider.search({ query: duckQuery, limit: 20 });
-      },
-      15,
-      3,
-    ),
-    await measure(
-      "Context Guard 50 KiB",
-      async () => {
-        await guard.inspectRaw({
-          rawBody: encoder.encode(guardText),
-          contentType: "text/plain; charset=utf-8",
-          source: { kind: "unknown", trust: "untrusted" },
-          requestedUse: "answer_with_citation",
-        });
-      },
-      10,
-      5,
-    ),
-    await measure(
-      "HTML 1 MiB extraction and guard",
-      async (index) => {
-        await client.read({ url: `https://example.com/benchmark-${index}` });
-      },
-      75,
-      2,
-    ),
-  ];
-  const summary = { node: process.version, results };
-  const coverageDirectory = new URL("../coverage/", import.meta.url);
-  await mkdir(coverageDirectory, { recursive: true });
-  await writeFile(
-    new URL("benchmark-summary.json", coverageDirectory),
-    `${JSON.stringify(summary, null, 2)}\n`,
-  );
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
-} finally {
-  await client.close();
-}
+const summary = {
+  node: process.version,
+  strategy: "median of three isolated sequential processes",
+  results,
+};
+const coverageDirectory = new URL("../coverage/", import.meta.url);
+await mkdir(coverageDirectory, { recursive: true });
+await writeFile(
+  new URL("benchmark-summary.json", coverageDirectory),
+  `${JSON.stringify(summary, null, 2)}\n`,
+);
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

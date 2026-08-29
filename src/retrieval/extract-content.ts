@@ -10,7 +10,7 @@ import {
   domNodeName,
   type HtmlStructureLimits,
 } from "./html-limits.js";
-import { scoreContentCandidate } from "./quality.js";
+import { scoreContentMetrics } from "./quality.js";
 
 const CANDIDATE_SELECTORS = [
   "article",
@@ -140,63 +140,220 @@ export interface ExtractContentOptions {
   minCharacters?: number;
 }
 
-function candidateMetrics(element: AnyNode): {
-  text: string;
+interface CandidateRange {
+  start: number;
+  end: number;
+}
+
+interface IndexedCandidateMetrics {
+  characterCount: number;
   paragraphCount: number;
   linkTextLength: number;
-} {
+}
+
+interface TextRun {
+  start: number;
+  end: number;
+  text: string;
+}
+
+interface LinkInterval {
+  start: number;
+  end: number;
+  textLength: number;
+}
+
+interface CandidateTextIndex {
+  ranges: ReadonlyMap<AnyNode, CandidateRange>;
+  metrics(range: CandidateRange): IndexedCandidateMetrics;
+  text(range: CandidateRange): string;
+}
+
+function lowerBound<T>(
+  values: readonly T[],
+  target: number,
+  selector: (value: T) => number,
+): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const value = values[middle];
+    if (value !== undefined && selector(value) < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function prefixSums(values: readonly number[]): number[] {
+  const prefix = [0];
+  for (const value of values) {
+    prefix.push((prefix.at(-1) ?? 0) + value);
+  }
+  return prefix;
+}
+
+function buildCandidateTextIndex(
+  $: CheerioAPI,
+  candidates: ReadonlySet<AnyNode>,
+): CandidateTextIndex {
+  interface LinkCapture {
+    start: number;
+    textParts: string[];
+  }
   type Entry = {
+    phase: "enter" | "exit";
     node: unknown;
-    insideLink: boolean;
+    activeLink?: LinkCapture;
     blockTextVersion?: number;
+    candidate?: AnyNode;
+    openedLink?: LinkCapture;
   };
-  const stack: Entry[] = [{ node: element, insideLink: false }];
+  const root = $.root().get(0);
+  const stack: Entry[] = root
+    ? [{ phase: "enter", node: root }]
+    : [];
   const textParts: string[] = [];
-  const linkTextParts: string[] = [];
+  const ranges = new Map<AnyNode, CandidateRange>();
+  const paragraphPositions: number[] = [];
+  const linkIntervals: LinkInterval[] = [];
+  let textLength = 0;
   let textVersion = 0;
-  let paragraphCount = 0;
 
   const separator = (): void => {
-    if (textParts.length > 0) textParts.push("\n\n");
+    if (textParts.length > 0) {
+      textParts.push("\n\n");
+      textLength += 2;
+    }
   };
 
   while (stack.length > 0) {
     const entry = stack.pop();
     if (!entry) break;
-    if (entry.blockTextVersion !== undefined) {
-      if (textVersion > entry.blockTextVersion) paragraphCount += 1;
-      separator();
+    if (entry.phase === "exit") {
+      if (entry.blockTextVersion !== undefined) {
+        if (textVersion > entry.blockTextVersion) {
+          paragraphPositions.push(textLength);
+        }
+        separator();
+      }
+      if (entry.openedLink) {
+        const textLengthForLink = normalizeInlineText(
+          entry.openedLink.textParts.join(" "),
+        ).length;
+        if (textLengthForLink > 0) {
+          linkIntervals.push({
+            start: entry.openedLink.start,
+            end: textLength,
+            textLength: textLengthForLink,
+          });
+        }
+      }
+      if (entry.candidate) {
+        const range = ranges.get(entry.candidate);
+        if (range) range.end = textLength;
+      }
       continue;
     }
 
+    const candidate = candidates.has(entry.node as AnyNode)
+      ? entry.node as AnyNode
+      : undefined;
+    if (candidate) ranges.set(candidate, { start: textLength, end: textLength });
     const name = domNodeName(entry.node);
     const block = BLOCK_ELEMENTS.has(name);
     if (block) separator();
+    let activeLink = entry.activeLink;
+    let openedLink: LinkCapture | undefined;
+    if (name === "a" && !activeLink) {
+      openedLink = { start: textLength, textParts: [] };
+      activeLink = openedLink;
+    }
     const data = domNodeData(entry.node);
     if (data) {
       textParts.push(data);
+      textLength += data.length;
       if (/\S/u.test(data)) textVersion += 1;
-      if (entry.insideLink) linkTextParts.push(data);
+      activeLink?.textParts.push(data);
     }
 
     const children = domNodeChildren(entry.node);
-    if (block) {
-      stack.push({
-        node: entry.node,
-        insideLink: entry.insideLink,
-        blockTextVersion: textVersion,
-      });
-    }
-    const insideLink = entry.insideLink || name === "a";
+    stack.push({
+      phase: "exit",
+      node: entry.node,
+      ...(block ? { blockTextVersion: textVersion } : {}),
+      ...(candidate ? { candidate } : {}),
+      ...(openedLink ? { openedLink } : {}),
+    });
     for (let index = children.length - 1; index >= 0; index -= 1) {
-      stack.push({ node: children[index], insideLink });
+      stack.push({
+        phase: "enter",
+        node: children[index],
+        ...(activeLink ? { activeLink } : {}),
+      });
     }
   }
 
+  const rawText = textParts.join("");
+  const runs: TextRun[] = [];
+  for (const match of rawText.matchAll(/[^\t\f\v\r\n ]+/gu)) {
+    const text = match[0];
+    const start = match.index;
+    runs.push({ start, end: start + text.length, text });
+  }
+  const textPrefix = prefixSums(runs.map((run) => run.text.length));
+  const gapPrefix = prefixSums(
+    runs.slice(0, -1).map((run, index) => {
+      const next = runs[index + 1];
+      if (!next) return 0;
+      return normalizePlainText(`a${rawText.slice(run.end, next.start)}b`).length - 2;
+    }),
+  );
+  const paragraphCount = (range: CandidateRange): number => {
+    const start = lowerBound(paragraphPositions, range.start, (value) => value);
+    const end = lowerBound(paragraphPositions, range.end, (value) => value);
+    return end - start;
+  };
+  const characterCount = (range: CandidateRange): number => {
+    let start = lowerBound(runs, range.start, (run) => run.start);
+    let end = lowerBound(runs, range.end, (run) => run.start);
+    while (start < end && !runs[start]?.text.trim()) start += 1;
+    while (end > start && !runs[end - 1]?.text.trim()) end -= 1;
+    if (start >= end) return 0;
+    const first = runs[start];
+    const last = runs[end - 1];
+    if (!first || !last) return 0;
+    if (first === last) return first.text.trim().length;
+    const textCharacters =
+      (textPrefix[end] ?? 0) -
+      (textPrefix[start] ?? 0) -
+      (first.text.length - first.text.trimStart().length) -
+      (last.text.length - last.text.trimEnd().length);
+    const gaps = (gapPrefix[end - 1] ?? 0) - (gapPrefix[start] ?? 0);
+    return textCharacters + gaps;
+  };
+  const linkPrefix = prefixSums(linkIntervals.map((entry) => entry.textLength));
+  const linkTextLength = (range: CandidateRange): number => {
+    const start = lowerBound(linkIntervals, range.start, (entry) => entry.start);
+    const end = lowerBound(linkIntervals, range.end, (entry) => entry.start);
+    const count = end - start;
+    if (count <= 0) return 0;
+    const content = (linkPrefix[end] ?? 0) - (linkPrefix[start] ?? 0);
+    return content + count - 1;
+  };
+
   return {
-    text: normalizePlainText(textParts.join("")),
-    paragraphCount,
-    linkTextLength: normalizeInlineText(linkTextParts.join(" ")).length,
+    ranges,
+    metrics(range) {
+      return {
+        characterCount: characterCount(range),
+        paragraphCount: paragraphCount(range),
+        linkTextLength: linkTextLength(range),
+      };
+    },
+    text(range) {
+      return normalizePlainText(rawText.slice(range.start, range.end));
+    },
   };
 }
 
@@ -255,10 +412,9 @@ export function extractHtmlContent(
 
   let bestText = "";
   let bestScore = Number.NEGATIVE_INFINITY;
+  let bestRange: CandidateRange | undefined;
   const candidateElements: AnyNode[] = [];
   const candidateSet = new Set<AnyNode>();
-  const selected = new Set<unknown>();
-  const ancestorsOfSelected = new Set<unknown>();
 
   for (const selector of CANDIDATE_SELECTORS) {
     $(selector).each((_index, element) => {
@@ -278,47 +434,22 @@ export function extractHtmlContent(
     });
   }
 
-  const hasSelectedAncestor = (element: unknown): boolean => {
-    let parent = Reflect.get(element as object, "parent") as unknown;
-    while (parent && typeof parent === "object") {
-      if (selected.has(parent)) return true;
-      parent = Reflect.get(parent, "parent") as unknown;
-    }
-    return false;
-  };
-
-  const scoreCandidate = (element: AnyNode): void => {
-    const metrics = candidateMetrics(element);
-    const quality = scoreContentCandidate({
-      text: metrics.text,
+  const index = buildCandidateTextIndex($, candidateSet);
+  for (const element of candidateElements) {
+    const range = index.ranges.get(element);
+    if (!range) continue;
+    const metrics = index.metrics(range);
+    const quality = scoreContentMetrics({
+      characterCount: metrics.characterCount,
       paragraphCount: metrics.paragraphCount,
       linkTextLength: metrics.linkTextLength,
     });
     if (quality.score > bestScore) {
       bestScore = quality.score;
-      bestText = metrics.text;
+      bestRange = range;
     }
-  };
-
-  for (const element of candidateElements) {
-    if (hasSelectedAncestor(element) || ancestorsOfSelected.has(element)) {
-      continue;
-    }
-    selected.add(element);
-    let parent = Reflect.get(element as object, "parent") as unknown;
-    while (parent && typeof parent === "object") {
-      ancestorsOfSelected.add(parent);
-      parent = Reflect.get(parent, "parent") as unknown;
-    }
-    scoreCandidate(element);
   }
-
-  // Specific semantic candidates are preferred to avoid repeatedly walking the
-  // whole document. If all of them are too short, score body once as a fallback.
-  if (bestText.length < minCharacters) {
-    const body = $("body").first().get(0);
-    if (body && !selected.has(body)) scoreCandidate(body);
-  }
+  if (bestRange) bestText = index.text(bestRange);
 
   if (bestText.length < minCharacters) {
     throw new LlmFetchError(

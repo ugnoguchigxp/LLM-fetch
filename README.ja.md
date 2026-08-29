@@ -73,6 +73,8 @@ const web = createLlmFetch({
 
 この経路がbot challenge、通信失敗、構造変更で使えない場合は、DuckDuckGoのHTML版、Lite版の順に切り替えます。いずれも安定した検索APIではないため、仕様変更、アクセス制限、bot challengeは起こり得ます。失敗を空の検索結果にはせず、原因を判別できるエラーとして返します。
 
+DuckDuckGo対応はexperimental / best-effortです。契約されたAPIと予測しやすい可用性が必要な本番用途では、Brave Searchまたは審査済みのcustom Providerを使用してください。
+
 SearXNGとAGPLコードは使っていません。CAPTCHAの解答やプロキシの切り替えも行いません。
 
 ### Brave Searchへ切り替える
@@ -232,6 +234,8 @@ npm run verify
 npm pack --dry-run
 ```
 
+Brave Providerをローカルで疎通確認する場合は、`.env.example`を`.env`へコピーして`BRAVE_SEARCH_API_KEY`を設定し、`npm run canary:brave`を実行します。`.env`はGitの除外対象であり、commitしないでください。canaryが出力するのはprovider名と取得件数だけです。DuckDuckGoはsecret不要の`npm run canary:duckduckgo`で確認できます。
+
 インストール済みChromiumを使う結合テストは、明示的に有効化します。
 
 ```sh
@@ -240,6 +244,8 @@ LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 \
 ```
 
 `npm run verify`はLint、型検査、単体・セキュリティテスト、coverage、本番依存のlicense、pack後のESM / CommonJS / NodeNext / bundler、core-only install、`publint`、Are The Types Wrongを確認します。Chromiumは非rootのsandbox付きcontainerで別jobとして検証します。
+
+保守担当者向けの公開準備と、初回だけ必要なnpmパッケージ名の登録手順は[Release runbook](./docs/RELEASE.md)にまとめています。
 
 ## ライセンス
 

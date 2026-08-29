@@ -23,8 +23,8 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - name: Require a Trusted Publishing-compatible npm
-        run: node -e "const [M,m]=require('node:child_process').execFileSync('npm',['--version'],{encoding:'utf8'}).trim().split('.').map(Number);if(M<11||(M===11&&m<5))throw new Error('npm 11.5.1 or newer is required')"
+      - run: npm install --global npm@11.6.4
+      - run: node scripts/verify-npm-version.mjs
       - run: npm ci
       - run: npm run verify
       - run: npm run bench:ci
@@ -52,8 +52,8 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - name: Require a Trusted Publishing-compatible npm
-        run: node -e "const [M,m]=require('node:child_process').execFileSync('npm',['--version'],{encoding:'utf8'}).trim().split('.').map(Number);if(M<11||(M===11&&m<5))throw new Error('npm 11.5.1 or newer is required')"
+      - run: npm install --global npm@11.6.4
+      - run: node scripts/verify-npm-version.mjs
       - run: npm ci
       - run: node scripts/verify-release-tag.mjs "$RELEASE_TAG"
         env:

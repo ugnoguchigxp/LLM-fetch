@@ -154,6 +154,33 @@ describe("bounded extraction decoding", () => {
     });
   });
 
+  it("scores an ancestor when a short nested article omits the main body", () => {
+    const teaser = "Short introductory teaser. ".repeat(8);
+    const fullArticle = "This is the complete article paragraph. ".repeat(80);
+    const html = `<html><body><main>
+      <article><p>${teaser}</p></article>
+      <section><p>${fullArticle}</p></section>
+    </main></body></html>`;
+    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    expect(result.text).toContain(teaser.trim().slice(0, 100));
+    expect(result.text).toContain(fullArticle.trim().slice(0, 200));
+    expect(result.text.length).toBeGreaterThanOrEqual(teaser.length + fullArticle.length);
+  });
+
+  it("prefers paragraph content over a similarly sized link-heavy candidate", () => {
+    const links = Array.from(
+      { length: 20 },
+      (_, index) => `<a href="/item-${index}">${"Linked navigation text. ".repeat(4)}</a>`,
+    ).join("");
+    const article = "Independent factual paragraph content. ".repeat(35);
+    const html = `<html><body>
+      <div class="content">${links}</div>
+      <article><p>${article}</p></article>
+    </body></html>`;
+    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    expect(result.text).toContain(article.trim().slice(0, 200));
+  });
+
   it("preserves direct candidate text that surrounds block elements", () => {
     const directText = "Direct article text remains part of the extracted result. ".repeat(4);
     const html = `<html><body><main>${directText}<p>Short paragraph.</p>${directText}</main></body></html>`;

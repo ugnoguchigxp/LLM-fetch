@@ -7,11 +7,13 @@
 | 対象 | `llm-fetch` |
 | 目標 | 公開npmパッケージ `v0.1.0` |
 | 基準日 | 2026-08-29 |
-| 現在の判定 | NO-GO。社内・限定alpha相当 |
+| 現在の判定 | リポジトリ改修は完了。公開は別トラックのWindows / Chromium CI、初回npm登録、provenance確認、明示承認までNO-GO |
 | この文書の役割 | コード監査で確認した課題を、実装順序・完了条件・検証方法へ変換する |
 | 関連文書 | [plan.md](./plan.md)、[README.md](./README.md)、[README.ja.md](./README.ja.md)、[SECURITY.md](./SECURITY.md) |
 
 `plan.md`は製品の設計経緯と全体仕様を保持する。本書は、公開前の残作業と品質改善を実行するための計画として使用する。
+
+2026-08-29の再評価で見つかった本文抽出回帰、secret管理、公開操作の保護、評価コーパス規模、Provider方針、source map、保守性、benchmark安定性は第11節の実装で解消した。Windows packed consumerとChromium sandboxのCI実行、初回npm登録とprovenance確認は別トラックとして残る。
 
 ## 2. 目標と完了状態
 
@@ -732,13 +734,14 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 - [x] SEC-02: segment切り捨てが必ずGuard判定へ反映される
 - [x] SEC-03: charset処理がclientとstandalone Guardで一致する
 - [ ] GitHub Actionsの全必須jobが成功している
-- [x] Chromium sandbox有効のintegration testが成功している
+- [ ] Chromium sandbox有効のintegration testがGitHub Actionsで成功している（別トラック）
 - [x] coverageとGuardコーパスの閾値を満たしている
 - [x] performance targetを満たすか、変更理由が承認されている
 - [x] OpenAI Responses / Chat Completions / Bedrockの互換テストが成功している
 - [ ] Windowsを含むpacked consumer testが成功している
 - [x] final package名、README、repository metadataが一致している
-- [ ] DuckDuckGoの公開上の扱いが確定している
+- [x] DuckDuckGoの公開上の扱いが確定している
+- [x] `.env`の`BRAVE_SEARCH_API_KEY`を用いたBrave live canaryが成功している
 - [x] README英語版・日本語版・SECURITYの記述が実装と一致している
 - [x] production / development dependency auditに未解決の重大問題がない
 - [x] `publint`とAre The Types Wrongが成功している
@@ -746,3 +749,266 @@ P0と公開必須P1だけを対象にした場合でも、単独作業でおお�
 - [ ] provenanceのリポジトリ情報が正しい
 - [x] CHANGELOGとrelease noteが用意されている
 - [ ] 明示的な公開承認を得ている
+
+## 11. 再評価後の改修計画
+
+### 11.1 対象範囲
+
+この節では、2026-08-29の再評価で新たに確認した課題と、完了判定を強化するための改修を扱う。
+
+対象:
+
+- ローカルsecretの誤コミット防止。
+- 入れ子になった本文候補の抽出回帰修正。
+- npm公開操作のtag、承認、初回publish、Trusted Publishingの保護。
+- Context Guard評価コーパスの拡充。
+- DuckDuckGo / Braveの公開方針とcanary記録。
+- リリースチェックリストと実測結果の整合。
+- 大型module、source map、benchmark安定性の改善。
+
+別トラック:
+
+- Windowsで`npm.cmd`を`execFile()`から起動した際の`spawn EINVAL`修正。
+- Linux Chromium sandbox用のseccomp / user namespace設定。
+- 上記を含むGitHub Actionsの再実行と全job成功判定。
+
+`.github/workflows/publish.yml`はCI検証ではなくnpmへの外部書き込みを制御するため、本節の対象に含める。
+
+### 11.2 優先順位と依存関係
+
+| 順序 | ID | 優先度 | 規模 | 作業 | 依存 |
+| ---: | --- | --- | --- | --- | --- |
+| 1 | SAFE-01 | P0 | S | `.env`とlocal secretの誤コミット防止 | なし |
+| 2 | COR-01 | P0 | M | 本文候補スコアリングの回帰修正 | SAFE-01 |
+| 3 | REL-01 | P0 | M | 実publish経路のtag・承認保護 | SAFE-01 |
+| 4 | REL-02 | P0 | M + 外部設定 | 初回publishとTrusted Publishingの確立 | REL-01 |
+| 5 | EVAL-01 | P1 | M | Guard評価コーパスの拡充 | なし |
+| 6 | PROV-01 | P1 | S + 外部判断 | Provider canaryと公開方針の確定 | SAFE-01 |
+| 7 | DOC-05 | P1 | S | リリース記録とチェックリストの証拠連動 | COR-01、REL-01、EVAL-01、PROV-01 |
+| 8 | BUILD-01 | P2 | S | 公開source mapとstack trace検証 | COR-01 |
+| 9 | MNT-03 | P2 | L | `client.ts`の責務分割 | COR-01 |
+| 10 | PERF-03 | P2 | M | benchmarkの負荷変動耐性向上 | COR-01 |
+
+P0とP1を`v0.1.0`公開前に完了する。P2はP0/P1の完了を遅らせない範囲で実施し、延期する場合はissueと判断理由を残す。
+
+### 11.3 SAFE-01: ローカルsecretの誤コミット防止
+
+現状:
+
+- `.env`に`BRAVE_SEARCH_API_KEY`が設定されている。
+- `.env`は未追跡で、Git履歴にも存在しない。
+- `.gitignore`では除外されていないため、一括追加による誤コミット余地がある。
+
+実装内容:
+
+- `.gitignore`へ`.env`とlocal overrideを追加する。
+- 共有可能な変数名だけを記載した`.env.example`を追加し、値は空または明示的なplaceholderにする。
+- READMEの開発手順へ、`.env`をcommitしないことと`node --env-file=.env`を使うlocal canary例を追加する。
+- CI secretはGitHub Actions secretからのみ注入し、fork由来のworkflowへ渡さない。
+- secret値そのものをrelease report、test failure、debug logへ出さない。
+
+完了条件:
+
+- `git check-ignore .env`が成功する。
+- `git ls-files .env`が空である。
+- `.env.example`と公開tarballに実キーが含まれない。
+- Brave canaryの成功ログがprovider名と件数だけを出力する。
+
+### 11.4 COR-01: 本文候補スコアリングの回帰修正
+
+現状:
+
+- `article`を先に選択すると、その祖先である`main`と`body`を評価対象から外す。
+- 160文字のteaserと2,520文字の本文を同じ`main`へ置いたfixtureで、160文字だけが返ることを再現済み。
+
+設計方針:
+
+- 特定selectorを優先して祖先を捨てる方式を廃止する。
+- DOMを繰り返し全文走査しないという性能要件は維持する。
+- 各nodeの本文長、段落数、link本文長をpost-orderの単一走査で集計し、候補ごとのscore計算へ再利用する。
+- `article`、`main`、`[role=main]`、content系selector、`body`の全候補をscore対象にする。
+- 最大node数、深度、候補数、deadlineのfail-closed動作を維持する。
+
+回帰テスト:
+
+- 短い`article`と長い兄弟`section`を含む`main`では、長い本文を含む候補を選ぶ。
+- 長い正規`article`がある場合は、navigation等を含む`body`より`article`を選ぶ。
+- 入れ子の`article` / `main` / `.content`でも本文を重複しない。
+- link密度が高い候補より段落本文を優先する。
+- `minCharacters`未満の場合だけbody fallbackする既存契約を壊さない。
+- 513件以上の候補、深いDOM、大規模HTMLは従来どおり型付きで拒否する。
+
+完了条件:
+
+- 再現fixtureで2,520文字側の本文が抽出される。
+- 既存抽出テストとsecurity testがすべて成功する。
+- HTML 1MiB抽出＋Guardのp95が承認済み閾値内に収まる。
+- 新しい再帰処理や候補数に比例する全文再走査を追加しない。
+
+### 11.5 REL-01: 実publish経路のtag・承認保護
+
+実装内容:
+
+- `workflow_dispatch`はdry-run専用にする。手動実行から直接`npm publish`できる条件を削除する。
+- 実publishはGitHub Releaseの`published` eventだけを起点にする。
+- verify jobとpublish jobの両方で、`v<package version>`と`package.json`の一致を検査する。
+- release workflowではpackage manager cacheを無効にする。
+- npm CLIがTrusted Publishingの最低要件を満たすことを明示的に検査する。
+- GitHubの`npm` Environmentを作成し、required reviewerと意図したbranch / tagだけを許可する。
+- `main`と`v*` tagへrulesetを設定し、必須check成功前のrelease作成を防ぐ。
+
+完了条件:
+
+- 手動dispatchで`dry_run=false`相当を指定してもpublish jobが起動しない。
+- tag不一致、`private: true`、古いnpm CLIのいずれでもpublish前に失敗する。
+- npm Environmentの承認なしではpublish jobが開始しない。
+- `private: true`はほかの全ゲートが完了するまで維持する。
+
+### 11.6 REL-02: 初回publishとTrusted Publishing
+
+実装内容:
+
+- 未登録の`llm-fetch`を最初に登録する手順と認証方式を決める。
+- 初回publishが対話的2FAまたは短命なgranular tokenを必要とする場合、実施者、失効手順、監査記録を決める。
+- 初回登録直後に、GitHub repository、`publish.yml`、`npm` EnvironmentをTrusted Publisherとして設定する。
+- Trusted Publisher成功後は従来tokenを失効し、可能ならtoken publishを禁止する。
+- provenanceが公開GitHub repositoryとrelease commitを指すことを確認する。
+- 可能であれば直接publishではなくstaged publishingを採用し、2FA承認後に公開する。
+
+完了条件:
+
+- 初回publishのbootstrap手順がrelease runbookへ記録される。
+- 2回目以降は長期write tokenなしで公開できる。
+- npm上のpackage、GitHub Release、tag、commit、version、provenanceが一致する。
+
+### 11.7 EVAL-01: Context Guard評価コーパスの拡充
+
+現状の41件はrelease smokeとして維持し、精度評価用コーパスを別に追加する。
+
+実装内容:
+
+- 攻撃と正常文をそれぞれ最低100件へ拡張する。
+- 英語、日本語、混在文、引用、教育記事、security記事を含める。
+- zero-width、文字区切り、percent / unicode escape、base64、leet、HTML comment、hidden、meta、template、attribute、長文末尾を含める。
+- finding category、最低decision、許容decisionをfixtureごとに明示する。
+- 高危険度攻撃の`allow`率、正常文の`deny`率、`require_approval`率をrelease reportへ出力する。
+- コーパス件数だけで安全性を主張せず、heuristicであるという文書上の制約を維持する。
+
+完了条件:
+
+- 高危険度attackの`allow`は0件。
+- benignの`deny`は0件、`require_approval`率は5%以下。
+- segment切り捨てを含むtool action要求は`deny`になる。
+- コーパスを追加しても秘密情報や第三者の長文著作物をリポジトリへ持ち込まない。
+
+### 11.8 PROV-01: Provider運用と公開方針
+
+確認済み:
+
+- `.env`から値をログ出力せずBrave canaryを実行し、3件の結果を取得した。
+- DuckDuckGo canaryは1件の結果を取得した。
+
+残作業:
+
+- Brave canaryの実施日、provider、成功件数だけをrelease記録へ残す。
+- BraveのAPI keyをREADME、fixture、artifactへ含めない。
+- DuckDuckGoはexperimental / best-effort、Braveまたはcustom providerをproduction推奨とする既定案を採用するか、利用予定に応じて問い合わせる。
+- DuckDuckGoを公式API、SLA付き、商用利用保証済みと誤認させる表現がないことを最終確認する。
+- Provider failureを空結果へ変換しない既存契約を維持する。
+
+完了条件:
+
+- Brave live canaryとDuckDuckGo canaryのrelease前結果が記録される。
+- DuckDuckGoの公開方針と判断者がrelease noteまたはrunbookへ残る。
+- production推奨ProviderがREADMEから判別できる。
+
+### 11.9 DOC-05: リリース証拠とチェックリストの整合
+
+実装内容:
+
+- ローカル成功とGitHub Actions成功を別項目として記録する。
+- checkboxを更新する際は、commit SHA、run URL、artifactまたは実行コマンドのいずれかを根拠として添える。
+- `release-report.mjs`へGuardコーパス集計、pack情報、benchmark summaryを含める。
+- Provider live canaryはsecretを扱うため自動reportへ本文を入れず、成功可否と件数だけを別記録する。
+- 実測値が古くなった場合に完了扱いが残らない更新ルールを定める。
+
+完了条件:
+
+- 失敗中のjobがチェック済みにならない。
+- release commitに対応する検証証拠を1か所から辿れる。
+- release checklistと実際の公開workflow条件が一致する。
+
+### 11.10 P2品質改善
+
+#### BUILD-01: source map
+
+- 公開repositoryであることを前提に、ESM / CJSの外部source mapを生成する。
+- `sourcesContent`、tarball増加量、内部path露出を確認する。
+- packed consumerから意図的な例外を発生させ、stack traceがTypeScript sourceへ対応することを検証する。
+- 問題がある場合は非公開のままにする判断理由を記録する。
+
+#### MNT-03: `client.ts`の責務分割
+
+- validation、search、read / extraction、Guard、cache / in-flight、lifecycleへ段階的に分割する。
+- public type、export、error code、cache key、deadline semanticsを変更しない。
+- 分割PRでは機能追加を混ぜず、既存testとbundle差分で同値性を確認する。
+
+#### PERF-03: benchmark安定性
+
+- 重いtestとの同時実行を避け、benchmarkを独立processで実行する。
+- warm-up後の複数runから中央値とp95を記録する。
+- runner負荷による単発失敗と継続的な20%以上の回帰を区別する。
+- fail-closed、構造上限、deadlineを性能対策のために緩めない。
+
+### 11.11 推奨PR分割
+
+| 順序 | PR | 対象 | 主な検証 |
+| ---: | --- | --- | --- |
+| 1 | `chore/secret-hygiene` | SAFE-01 | ignore、履歴、pack内容 |
+| 2 | `fix/content-candidate-scoring` | COR-01 | 抽出fixture、全test、benchmark |
+| 3 | `harden/npm-release-controls` | REL-01、REL-02のrepository側 | dry-run、tag mismatch、private gate |
+| 4 | `test/guard-evaluation-corpus` | EVAL-01 | precision集計、release report |
+| 5 | `docs/provider-release-record` | PROV-01、DOC-05 | 日英文書、canary記録、チェックリスト |
+| 6 | `build/source-maps` | BUILD-01 | packed stack trace、pack size |
+| 7 | `refactor/client-pipelines` | MNT-03 | public API同値性、全test |
+| 8 | `perf/stable-release-benchmark` | PERF-03 | 独立run、baseline比較 |
+
+### 11.12 完了時の検証
+
+CIの実行自体は別トラックとし、この改修では各PRで少なくとも次をローカル実行する。
+
+```sh
+git check-ignore .env
+npm run lint
+npm run typecheck
+npm test
+npm run test:coverage
+npm run bench:ci
+npm run verify:package
+npm run verify:publint
+npm run verify:types
+node --env-file=.env scripts/provider-canary.mjs brave
+node scripts/provider-canary.mjs duckduckgo
+npm pack --dry-run --json
+```
+
+公開判定では、別トラックのWindows / Chromiumを含む全CI成功、GitHub Environment承認、Provider方針確定、`private: false`へ変更したrelease commit、tag / version一致を追加で要求する。
+
+### 11.13 実装結果（2026-08-29）
+
+| ID | 状態 | 実装・検証結果 |
+| --- | --- | --- |
+| SAFE-01 | 完了 | `.env` / `.env.*`を除外し、空値の`.env.example`を追加。canaryの標準出力をprovider名と件数に限定した |
+| COR-01 | 完了 | 候補の祖先を除外せず、単一DOM走査のrange / prefix indexで全候補を評価。teaserと長い兄弟本文、link密度の回帰testを追加した |
+| REL-01 | 完了 | 手動workflowを検証専用にし、npm 11.6.4を固定。`npm` Environment、`main` / `v*` ruleset、tag/version・private gateを設定した |
+| REL-02 | repository側完了 | 初回`0.0.0` bootstrap、Trusted Publisher設定、token失効、公開後確認を`docs/RELEASE.md`へ記録。実registry操作は公開承認後に行う |
+| EVAL-01 | 完了 | attack 125件、benign 100件。attack allow 0、最低判定未達0、finding category不一致0、benign deny 0、approval 0を確認した |
+| PROV-01 | 完了 | 2026-08-29にDuckDuckGo 1件、Brave 3件を取得。DuckDuckGoをexperimental / best-effort、Brave / reviewed customを本番推奨に確定した |
+| DOC-05 | 完了 | release reportへGit commit / clean状態、Guard集計、benchmark、provider canary記録を追加した |
+| BUILD-01 | 完了 | ESM / CJSとPlaywright entryの外部source mapを梱包し、absolute path非露出とTypeScript stack trace解決をpacked consumerで検証した |
+| MNT-03 | 完了 | `client.ts`の入力・結果validationとclient option validationを`client-validation.ts` / `client-options.ts`へ分割し、公開APIを維持した |
+| PERF-03 | 完了 | 3つの独立processの中央値で判定。HTML 1 MiB抽出＋Guardはmedian p95 58.93ms、max p95 60.16msで75ms閾値内だった |
+
+ローカル最終検証では、19 test file、242 test（235成功、7明示skip）、statement coverage 86.54%、branch coverage 81.41%、function coverage 96.46%、line coverage 89.43%を記録した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportはすべて成功した。pack結果は24 file、333,154 bytes（展開後1,302,197 bytes）で、ESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証済みである。
+
+残作業は本節のrepository改修ではなく、公開時の外部ゲートである。別トラックのWindows packed consumer / Chromium sandbox CIを成功させ、`llm-fetch@0.0.0`の初回登録とTrusted Publisher設定、`private: false`のrelease commit、`v0.1.0` provenance、明示的な公開承認を順に確認する。それまではnpm publishを実行しない。

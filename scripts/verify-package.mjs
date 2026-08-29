@@ -63,6 +63,7 @@ try {
     "README.ja.md",
     "CHANGELOG.md",
     "SECURITY.md",
+    "docs/RELEASE.md",
     "package.json",
   ]) {
     if (!packedPaths.has(requiredPath)) {
@@ -97,7 +98,32 @@ try {
     access(join(installedPackageRoot, "README.ja.md")),
     access(join(installedPackageRoot, "CHANGELOG.md")),
     access(join(installedPackageRoot, "SECURITY.md")),
+    access(join(installedPackageRoot, "docs", "RELEASE.md")),
+    access(join(installedPackageRoot, "dist", "index.js.map")),
+    access(join(installedPackageRoot, "dist", "index.cjs.map")),
+    access(join(installedPackageRoot, "dist", "playwright", "index.js.map")),
+    access(join(installedPackageRoot, "dist", "playwright", "index.cjs.map")),
   ]);
+  for (const mapPath of [
+    join(installedPackageRoot, "dist", "index.js.map"),
+    join(installedPackageRoot, "dist", "index.cjs.map"),
+    join(installedPackageRoot, "dist", "playwright", "index.js.map"),
+    join(installedPackageRoot, "dist", "playwright", "index.cjs.map"),
+  ]) {
+    const sourceMap = JSON.parse(await readFile(mapPath, "utf8"));
+    if (
+      !Array.isArray(sourceMap.sources) ||
+      sourceMap.sources.length === 0 ||
+      sourceMap.sources.some((source) =>
+        typeof source !== "string" || source.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(source)
+      ) ||
+      !Array.isArray(sourceMap.sourcesContent) ||
+      sourceMap.sourcesContent.length !== sourceMap.sources.length ||
+      sourceMap.sourcesContent.some((source) => typeof source !== "string")
+    ) {
+      throw new Error("Packed JavaScript source map is incomplete or exposes an absolute path.");
+    }
+  }
 
   try {
     await access(join(temporaryDirectory, "node_modules", "playwright-core"));
@@ -149,10 +175,22 @@ try {
     const client = createLlmFetch({ search, browser: { retriever: browser } });
     void client.close();
   `;
+  const sourceMapConsumer = `
+    import { createLlmFetch } from ${packageSpecifier};
+    const client = createLlmFetch({
+      search: { name: "fixture", async search() { return []; } },
+    });
+    try {
+      await client.search({ query: "" });
+    } finally {
+      await client.close();
+    }
+  `;
   await Promise.all([
     writeFile(join(temporaryDirectory, "consumer.mjs"), esmConsumer),
     writeFile(join(temporaryDirectory, "consumer.cjs"), cjsConsumer),
     writeFile(join(temporaryDirectory, "consumer.ts"), typeConsumer),
+    writeFile(join(temporaryDirectory, "sourcemap-consumer.mjs"), sourceMapConsumer),
     writeFile(
       join(temporaryDirectory, "tsconfig.json"),
       JSON.stringify({
@@ -185,6 +223,28 @@ try {
 
   await run(process.execPath, [join(temporaryDirectory, "consumer.mjs")]);
   await run(process.execPath, [join(temporaryDirectory, "consumer.cjs")]);
+  let sourceMapFailure;
+  try {
+    await run(process.execPath, [
+      "--enable-source-maps",
+      join(temporaryDirectory, "sourcemap-consumer.mjs"),
+    ]);
+  } catch (error) {
+    sourceMapFailure = error;
+  }
+  if (!sourceMapFailure) {
+    throw new Error("The source-map consumer unexpectedly succeeded.");
+  }
+  const sourceMapStderr =
+    sourceMapFailure &&
+    typeof sourceMapFailure === "object" &&
+    "stderr" in sourceMapFailure &&
+    typeof sourceMapFailure.stderr === "string"
+      ? sourceMapFailure.stderr
+      : "";
+  if (!/src[\\/]client-validation\.ts:\d+/u.test(sourceMapStderr)) {
+    throw new Error("Packed stack trace did not resolve to the TypeScript source.");
+  }
   const typescriptPackage = JSON.parse(
     await readFile(
       join(projectRoot, "node_modules", "typescript", "package.json"),

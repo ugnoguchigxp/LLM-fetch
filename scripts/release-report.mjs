@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { createGuardCorpusReport } from "./guard-corpus-report.mjs";
 
 const execFileAsync = promisify(execFile);
 const projectRoot = new URL("../", import.meta.url);
@@ -62,11 +63,48 @@ try {
   benchmark = null;
 }
 
+const guardCorpus = await createGuardCorpusReport();
+const canaries = {};
+for (const provider of ["duckduckgo", "brave"]) {
+  try {
+    const canary = JSON.parse(
+      await readFile(
+        new URL(`coverage/provider-canary-${provider}.json`, projectRoot),
+        "utf8",
+      ),
+    );
+    if (
+      canary.provider === provider &&
+      Number.isInteger(canary.resultCount) &&
+      canary.resultCount > 0 &&
+      typeof canary.checkedAt === "string"
+    ) {
+      canaries[provider] = canary;
+    }
+  } catch {
+    // Provider canaries are explicit release actions and may not have run yet.
+  }
+}
+const [{ stdout: commit }, { stdout: worktreeStatus }] = await Promise.all([
+  execFileAsync("git", ["rev-parse", "HEAD"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+  execFileAsync("git", ["status", "--porcelain=v1"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+  }),
+]);
+
 process.stdout.write(
   `${JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
       node: process.version,
+      git: {
+        commit: commit.trim(),
+        clean: worktreeStatus.trim().length === 0,
+      },
       package: {
         name: manifest.name,
         version: manifest.version,
@@ -84,6 +122,8 @@ process.stdout.write(
       },
       coverage,
       benchmark,
+      guardCorpus,
+      providerCanaries: canaries,
     },
     null,
     2,
