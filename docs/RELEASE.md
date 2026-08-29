@@ -66,9 +66,11 @@ npm whoami
 npm publish --access public
 ```
 
-`prepublishOnly` reruns the repository verification before npm accepts the
-package. Complete any npm 2FA prompt directly; do not store its credentials in
-GitHub.
+`prepublishOnly` reruns lint, type checks, tests, coverage, license checks, and
+the npm version check before npm accepts the package. The package-format checks
+were already run during release preparation; keeping them outside the publish
+lifecycle avoids recursively packing the package being published. Complete any
+npm 2FA prompt directly; do not store its credentials in GitHub.
 
 ## Verify and announce
 
