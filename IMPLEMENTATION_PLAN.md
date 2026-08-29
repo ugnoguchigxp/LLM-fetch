@@ -1007,8 +1007,8 @@ npm pack --dry-run --json
 | DOC-05 | 完了 | release reportへGit commit / clean状態、Guard集計、benchmark、provider canary記録を追加した |
 | BUILD-01 | 完了 | ESM / CJSとPlaywright entryの外部source mapを梱包し、absolute path非露出とTypeScript stack trace解決をpacked consumerで検証した |
 | MNT-03 | 完了 | `client.ts`の入力・結果validationとclient option validationを`client-validation.ts` / `client-options.ts`へ分割し、公開APIを維持した |
-| PERF-03 | 完了 | 3つの独立processの中央値で判定。HTML 1 MiB抽出＋Guardはmedian p95 58.93ms、max p95 60.16msで75ms閾値内だった |
+| PERF-03 | 完了 | 3つの独立processの中央値で判定し、HTML 1 MiB抽出＋Guardが75ms閾値内であることを確認した。値はcommit連動のrelease reportを正本とする |
 
-ローカル最終検証では、19 test file、242 test（235成功、7明示skip）、statement coverage 86.54%、branch coverage 81.41%、function coverage 96.46%、line coverage 89.43%を記録した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportはすべて成功した。pack結果は24 file、333,154 bytes（展開後1,302,197 bytes）で、ESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証済みである。
+ローカル最終検証では、19 test file、242 test（235成功、7明示skip）と全coverage閾値を通過した。`npm run verify`、`npm run bench:ci`、Guardコーパス、npm CLI version、production / development audit、DuckDuckGo / Brave canary、release reportはすべて成功した。packは24 fileで、ESM、CommonJS、NodeNext、Bundler、型定義、core-only install、source map stackを検証済みである。変動するcoverage、benchmark、pack size、canary日時は、対象commitとclean状態が一致する`.release-evidence/`およびrelease reportを正本とする。
 
 残作業は本節のrepository改修ではなく、公開時の外部ゲートである。別トラックのWindows packed consumer / Chromium sandbox CIを成功させ、`llm-fetch@0.0.0`の初回登録とTrusted Publisher設定、`private: false`のrelease commit、`v0.1.0` provenance、明示的な公開承認を順に確認する。それまではnpm publishを実行しない。
