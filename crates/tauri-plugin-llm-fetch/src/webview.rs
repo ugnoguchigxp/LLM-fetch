@@ -232,7 +232,7 @@ impl<R: Runtime> Worker<R> {
             .build()
             .map_err(|_| ErrorResponse::new(ErrorCode::WebviewUnavailable))?;
         let mut pending_window = PendingWindow::new(window);
-        wait_for_internal_page(&mut initial_load_events, config.eval_timeout).await?;
+        wait_for_internal_page(&mut initial_load_events, config.session_create_timeout).await?;
         let window = pending_window.take()?;
         Ok(Arc::new(Self {
             window,

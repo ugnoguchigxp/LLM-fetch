@@ -933,6 +933,8 @@ WebviewWindowBuilder::new(
 
 plugin は `llm-fetch-internal` custom protocol で script/subresource を持たない固定 HTML だけを返す。この内部 URL は build と成功後 cleanup にだけ許可し、consumer の `index.html` を worker へ読み込まない。active request がない状態の external navigation は拒否する。
 
+worker作成時は内部URLの`PageLoadEvent::Finished`を`session_create_timeout_ms`の全体上限内で待つ。`eval_timeout_ms`は起動済みWebViewのJavaScript評価と成功後resetにだけ使い、cold-startの初期ページ待機には使わない。proxy起動、WebView build、初期ページ待機を含む全作成処理にはmanager側でも同じ`session_create_timeout_ms`を適用する。
+
 custom protocol 文書では WebKit の全 frame initialization script が実行されないため、内部待機ページを hardening probe の根拠にしない。HTTP(S) target の `PageLoadEvent::Finished` 直後に probe 成立を待ち、DOM settle 後にも再検証する。初期化スクリプト自体は target document の document-start に注入される。
 
 ### 13.2 callbacks
