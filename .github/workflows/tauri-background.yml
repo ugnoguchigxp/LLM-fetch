@@ -1,0 +1,91 @@
+name: Tauri background WebView
+
+on:
+  schedule:
+    - cron: "23 19 * * 1"
+  push:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/tauri-plugin-llm-fetch/**"
+      - "examples/tauri-background-fetch/**"
+      - ".github/workflows/tauri-background.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/tauri-plugin-llm-fetch/**"
+      - "examples/tauri-background-fetch/**"
+      - ".github/workflows/tauri-background.yml"
+  workflow_dispatch:
+    inputs:
+      run_long:
+        description: Run the 10-minute hidden WebView test
+        required: false
+        type: boolean
+        default: false
+      run_leak:
+        description: Run 100 one-shot lifecycle iterations
+        required: false
+        type: boolean
+        default: false
+      run_reuse:
+        description: Run 100 navigations in one reusable session
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: tauri-background-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+jobs:
+  fast:
+    name: macOS 14 / smoke and security boundaries
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.90.0 --profile minimal
+      - run: rustup default 1.90.0
+      - run: cargo run -p tauri-background-fetch -- --self-test-fast
+      - run: cargo run -p tauri-background-fetch -- --self-test-boundary
+
+  long:
+    name: macOS 14 / hidden WebView for 10 minutes
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_long)
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.90.0 --profile minimal
+      - run: rustup default 1.90.0
+      - run: cargo run -p tauri-background-fetch -- --self-test-long
+
+  leak:
+    name: macOS 14 / 100 one-shot lifecycles
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_leak)
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.90.0 --profile minimal
+      - run: rustup default 1.90.0
+      - run: cargo run -p tauri-background-fetch -- --self-test-leak
+
+  reuse:
+    name: macOS 14 / 100 reusable navigations
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_reuse)
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.90.0 --profile minimal
+      - run: rustup default 1.90.0
+      - run: cargo run -p tauri-background-fetch -- --self-test-reuse

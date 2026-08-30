@@ -82,7 +82,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run test:coverage && npm run verify:licenses && npm run verify:package && npm run verify:publint && npm run verify:types",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run test:coverage && npm run verify:rust-guard-fixtures && npm run verify:licenses && npm run verify:package && npm run verify:publint && npm run verify:types",
     "verify:guard-corpus": "npm run build && node scripts/guard-corpus-report.mjs",
     "verify:licenses": "node scripts/verify-licenses.mjs",
     "verify:npm-version": "node scripts/verify-npm-version.mjs",
@@ -90,6 +90,7 @@
     "verify:publish": "npm run lint && npm run typecheck && npm test && npm run test:coverage && npm run verify:licenses && npm run verify:npm-version",
     "verify:publint": "npm run build && publint",
     "verify:release-report": "node scripts/release-report.mjs",
+    "verify:rust-guard-fixtures": "npm run build && node scripts/export-rust-guard-fixtures.mjs --check",
     "verify:types": "attw --pack ."
   },
   "dependencies": {

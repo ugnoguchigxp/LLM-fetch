@@ -109,3 +109,46 @@ jobs:
             mcr.microsoft.com/playwright:v1.62.1-noble \
             /bin/bash -lc \
             'npm ci && npx vitest run test/playwright/integration.test.ts'
+
+  cargo:
+    runs-on: macos-14
+    timeout-minutes: 25
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.90.0 --profile minimal
+      - run: rustup default 1.90.0
+      - name: Enforce source file size limit
+        shell: bash
+        run: |
+          while IFS= read -r file; do
+            lines=$(wc -l < "$file")
+            if [ "$lines" -ge 800 ]; then
+              echo "$file has $lines lines; source files must stay below 800 lines."
+              exit 1
+            fi
+          done < <(find src test scripts bench crates examples -type f \
+            \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o \
+               -name '*.mjs' -o -name '*.rs' \) -print)
+      - run: cargo fmt --all -- --check
+      - run: cargo check --workspace --all-targets
+      - run: cargo test -p tauri-plugin-llm-fetch
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Verify Cargo-only package contents
+        shell: bash
+        run: |
+          cargo package -p tauri-plugin-llm-fetch --list > "$RUNNER_TEMP/llm-fetch-package.txt"
+          if grep -E '(^|/)(node_modules|dist)/|\.(ts|tsx|mjs|cjs)$|playwright' "$RUNNER_TEMP/llm-fetch-package.txt"; then
+            echo "Cargo package contains a Node/TypeScript/Playwright artifact."
+            exit 1
+          fi
+          cargo package -p tauri-plugin-llm-fetch
+      - name: Verify Cargo dependency boundary
+        shell: bash
+        run: |
+          cargo tree -p tauri-plugin-llm-fetch > "$RUNNER_TEMP/llm-fetch-tree.txt"
+          if grep -Ei 'playwright|node\.js|chromium' "$RUNNER_TEMP/llm-fetch-tree.txt"; then
+            echo "Cargo dependency graph contains a browser or Node runtime."
+            exit 1
+          fi
