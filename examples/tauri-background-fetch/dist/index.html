@@ -4,11 +4,79 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>llm-fetch background example</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 2rem;
+      }
+      main {
+        display: grid;
+        gap: 1rem;
+        max-width: 48rem;
+        margin: 0 auto;
+      }
+      form,
+      .actions {
+        display: grid;
+        gap: 0.75rem;
+      }
+      label {
+        display: grid;
+        gap: 0.25rem;
+      }
+      label.checkbox {
+        display: flex;
+        align-items: center;
+      }
+      input,
+      button {
+        box-sizing: border-box;
+        min-height: 2.5rem;
+        padding: 0.5rem 0.75rem;
+        font: inherit;
+      }
+      .actions {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      pre {
+        min-height: 10rem;
+        padding: 1rem;
+        overflow: auto;
+        border: 1px solid currentColor;
+        border-radius: 0.5rem;
+        white-space: pre-wrap;
+      }
+    </style>
   </head>
   <body>
     <main>
       <h1>llm-fetch background example</h1>
-      <p>The Tauri plugin is ready for background fetch requests.</p>
+      <form id="fetch-form">
+        <label>
+          URL
+          <input id="url" type="url" value="https://example.com/" required />
+        </label>
+        <label>
+          Reusable session host
+          <input id="host" value="example.com" required />
+        </label>
+        <label class="checkbox">
+          <input id="reuse" type="checkbox" />
+          Reuse a background session
+        </label>
+        <div class="actions">
+          <button type="submit">Fetch</button>
+          <button id="status" type="button">Status</button>
+          <button id="close" type="button">Close session</button>
+        </div>
+      </form>
+      <h2 id="summary">Ready</h2>
+      <pre id="output" aria-live="polite">No request has run yet.</pre>
     </main>
+    <script src="./app.js"></script>
   </body>
 </html>
