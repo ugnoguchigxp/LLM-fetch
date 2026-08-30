@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, Instant};
 use tauri::Manager as _;
 use tauri_plugin_llm_fetch::{
@@ -15,8 +14,6 @@ enum SelfTest {
     Reuse,
     Boundary,
 }
-
-static SELF_TEST_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
 
 fn main() {
     let mut self_test = None;
@@ -45,49 +42,53 @@ fn main() {
     } else {
         tauri_plugin_llm_fetch::init()
     };
-    let builder = tauri::Builder::default().plugin(plugin).setup(move |app| {
-        let main_window = app
-            .get_webview_window("main")
-            .ok_or_else(|| "main example window was not created".to_owned())?;
-        if let Some(mode) = self_test {
-            main_window.set_always_on_top(false)?;
-            main_window.set_focusable(false)?;
-            main_window.set_closable(false)?;
-            main_window.set_skip_taskbar(true)?;
-            main_window.hide()?;
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let result = run_self_test(&handle, mode).await;
-                match result {
-                    Ok(()) => {
-                        println!("llm-fetch self-test passed");
-                        handle.exit(0);
-                    }
-                    Err(message) => {
-                        eprintln!("llm-fetch self-test failed: {message}");
-                        SELF_TEST_EXIT_CODE.store(1, Ordering::Release);
-                        handle.llm_fetch().0.shutdown().await;
-                        std::process::exit(1);
-                    }
-                }
-            });
-        } else {
-            main_window.set_always_on_top(false)?;
-            main_window.set_focusable(true)?;
-            main_window.set_closable(true)?;
-            main_window.set_skip_taskbar(false)?;
-            main_window.show()?;
-            main_window.set_focus()?;
+    let setup_self_test = self_test;
+    let app = tauri::Builder::default()
+        .plugin(plugin)
+        .setup(move |app| {
+            let main_window = app
+                .get_webview_window("main")
+                .ok_or_else(|| "main example window was not created".to_owned())?;
+            if setup_self_test.is_some() {
+                main_window.set_always_on_top(false)?;
+                main_window.set_focusable(false)?;
+                main_window.set_closable(false)?;
+                main_window.set_skip_taskbar(true)?;
+                main_window.hide()?;
+            } else {
+                main_window.set_always_on_top(false)?;
+                main_window.set_focusable(true)?;
+                main_window.set_closable(true)?;
+                main_window.set_skip_taskbar(false)?;
+                main_window.show()?;
+                main_window.set_focus()?;
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("failed to build tauri example");
+    app.run(move |handle, event| {
+        if !matches!(event, tauri::RunEvent::Ready) {
+            return;
         }
-        Ok(())
+        let Some(mode) = self_test else {
+            return;
+        };
+        let handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            match run_self_test(&handle, mode).await {
+                Ok(()) => {
+                    println!("llm-fetch self-test passed");
+                    handle.exit(0);
+                }
+                Err(message) => {
+                    eprintln!("llm-fetch self-test failed: {message}");
+                    handle.llm_fetch().0.shutdown().await;
+                    std::process::exit(1);
+                }
+            }
+        });
     });
-    builder
-        .run(tauri::generate_context!())
-        .expect("failed to run tauri example");
-    let exit_code = SELF_TEST_EXIT_CODE.load(Ordering::Acquire);
-    if exit_code != 0 {
-        std::process::exit(exit_code);
-    }
 }
 
 async fn run_self_test(app: &tauri::AppHandle, mode: SelfTest) -> Result<(), String> {
