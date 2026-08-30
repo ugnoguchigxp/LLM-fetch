@@ -1,0 +1,42 @@
+[package]
+name = "tauri-plugin-llm-fetch"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+links = "tauri-plugin-llm-fetch"
+description = "Bounded, background WebView retrieval for Tauri applications"
+readme = "README.md"
+keywords = ["tauri", "webview", "llm", "fetch"]
+categories = ["web-programming"]
+
+[features]
+default = []
+
+[dependencies]
+bytes = "1"
+base64 = "0.22"
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+ipnet = "2"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sysinfo = { version = "=0.37.2", default-features = false, features = ["system"] }
+tauri = { version = "=2.11.5", default-features = false, features = ["wry", "macos-proxy"] }
+time = { version = "0.3", features = ["formatting", "macros", "serde"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+url = { version = "2", features = ["serde"] }
+unicode-normalization = "0.1"
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[build-dependencies]
+tauri-plugin = { version = "=2.6.3", features = ["build"] }
+
+[lints]
+workspace = true

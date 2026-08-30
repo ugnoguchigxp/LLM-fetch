@@ -1,0 +1,18 @@
+[workspace]
+members = [
+  "crates/tauri-plugin-llm-fetch",
+  "examples/tauri-background-fetch",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/ugnoguchigxp/LLM-fetch"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = "warn"

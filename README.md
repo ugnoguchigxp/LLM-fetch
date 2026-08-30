@@ -6,6 +6,10 @@
 
 The core package is written in TypeScript and does not require Python, Docker, SearXNG, a browser, or a long-running sidecar. Static pages use the HTTP path. Playwright support is optional and is used only when a page needs JavaScript to produce readable content.
 
+Tauri applications use the Cargo-only
+[`tauri-plugin-llm-fetch`](https://github.com/ugnoguchigxp/LLM-fetch/tree/main/crates/tauri-plugin-llm-fetch)
+from this repository instead of embedding the npm package. It retrieves pages with an OS-native hidden WebView and requires no Node.js, Playwright, separate browser, or sidecar. The npm package remains an independent Node.js implementation and the reference source for the Rust security guard.
+
 ## Requirements
 
 - Node.js 20.19 or later, or Bun 1.3.14 or later

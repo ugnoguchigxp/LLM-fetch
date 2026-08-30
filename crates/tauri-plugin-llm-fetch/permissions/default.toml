@@ -1,0 +1,3 @@
+[default]
+description = "Allows status, ephemeral session management, background fetch, and cancellation."
+permissions = ["allow-status", "allow-create-session", "allow-fetch", "allow-cancel", "allow-close-session"]
