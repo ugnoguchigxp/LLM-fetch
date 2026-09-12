@@ -2,7 +2,13 @@
 
 All notable changes to this project are documented here. Versions follow Semantic Versioning; release tags use the matching `v<version>` form.
 
-## 0.1.0 - Unreleased
+## 0.1.1 - 2026-09-12
+
+- Updated the TypeScript toolchain to TypeScript 7, Oxlint/Oxfmt, tsdown, and Vitest 5.
+- Updated npm and Cargo dependencies, Playwright CI, and Dependabot security coverage.
+- Raised the minimum supported Node.js version to 22.18.
+
+## 0.1.0 - 2026-08-29
 
 - Added bounded HTTP and optional Playwright content retrieval for public web pages.
 - Added DuckDuckGo best-effort search, Brave Search, and custom provider contracts.
