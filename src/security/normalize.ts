@@ -99,10 +99,7 @@ function printableRatio(value: string): number {
   return printable / [...value].length;
 }
 
-export function normalizeForScan(
-  input: string,
-  options: NormalizationOptions = {},
-): ScanVariant[] {
+export function normalizeForScan(input: string, options: NormalizationOptions = {}): ScanVariant[] {
   const maxInputCharacters = options.maxInputCharacters ?? 200_000;
   const maxDecodedCandidates = options.maxDecodedCandidates ?? 32;
   const source = input.slice(0, maxInputCharacters);
@@ -137,10 +134,7 @@ export function normalizeForScan(
   for (const branch of branches) {
     const techniques = new Set(branch.techniques);
     let branchText = branch.text;
-    const compacted = branchText.replace(
-      LETTER_SPACING,
-      (value) => value.replace(/[\t ]+/g, ""),
-    );
+    const compacted = branchText.replace(LETTER_SPACING, (value) => value.replace(/[\t ]+/g, ""));
     if (compacted !== branchText) techniques.add("letter_spacing_removed");
     branchText = compacted;
 
@@ -154,9 +148,8 @@ export function normalizeForScan(
       branchText = withoutControls;
       if (!escaped.changed && !percent.changed) break;
     }
-    const postDecodedCompacted = branchText.replace(
-      LETTER_SPACING,
-      (value) => value.replace(/[\t ]+/g, ""),
+    const postDecodedCompacted = branchText.replace(LETTER_SPACING, (value) =>
+      value.replace(/[\t ]+/g, ""),
     );
     if (postDecodedCompacted !== branchText) techniques.add("letter_spacing_removed");
     branchText = postDecodedCompacted;
@@ -197,11 +190,7 @@ export function normalizeForScan(
         addVariant({
           text: decodedVariant.text,
           techniques: [
-            ...new Set([
-              ...variant.techniques,
-              "base64_decoded",
-              ...decodedVariant.techniques,
-            ]),
+            ...new Set([...variant.techniques, "base64_decoded", ...decodedVariant.techniques]),
           ],
         });
       }

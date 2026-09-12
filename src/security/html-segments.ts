@@ -55,9 +55,7 @@ function appendSegment(
 
 function inlineStyleIsHidden(style: string): boolean {
   const normalized = style.replace(/\s+/g, " ").trim();
-  const explicitlyHidden = HIDDEN_STYLE_PATTERNS.some((pattern) =>
-    pattern.test(normalized),
-  );
+  const explicitlyHidden = HIDDEN_STYLE_PATTERNS.some((pattern) => pattern.test(normalized));
   const offscreen =
     /(?:^|;)\s*position\s*:\s*(?:absolute|fixed)\b/i.test(normalized) &&
     /(?:^|;)\s*(?:left|top|right|bottom)\s*:\s*(?:-\d{3,}|\d{4,})(?:px|em|rem)?\b/i.test(
@@ -74,10 +72,7 @@ function increment(summary: Record<string, number>, key: string): void {
   summary[key] = (summary[key] ?? 0) + 1;
 }
 
-export function prepareHtmlForExtraction(
-  $: CheerioAPI,
-  rawHtml: string,
-): PreparedHtml {
+export function prepareHtmlForExtraction($: CheerioAPI, rawHtml: string): PreparedHtml {
   const segments: ContentSegment[] = [];
   const excludedSummary: Record<string, number> = {};
   let omittedSegments = 0;
@@ -169,24 +164,16 @@ export function prepareHtmlForExtraction(
   for (const element of hiddenElements) {
     const node = $(element);
     if (nestedUnderHidden(element)) continue;
-    collect(
-      "hidden",
-      node.is("input[type='hidden']")
-        ? (node.attr("value") ?? "")
-        : node.text(),
-    );
+    collect("hidden", node.is("input[type='hidden']") ? (node.attr("value") ?? "") : node.text());
     increment(excludedSummary, "hidden-element");
     node.remove();
   }
 
-  $(
-    "script, style, noscript, template, svg, iframe, object, embed",
-  ).remove();
+  $("script, style, noscript, template, svg, iframe, object, embed").remove();
   return {
     segments,
     excludedSummary,
-    truncated:
-      omittedSegments > 0 || segments.some((segment) => segment.truncated),
+    truncated: omittedSegments > 0 || segments.some((segment) => segment.truncated),
     omittedSegments,
   };
 }

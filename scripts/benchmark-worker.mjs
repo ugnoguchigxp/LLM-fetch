@@ -1,15 +1,8 @@
-import {
-  createBuiltinContextGuard,
-  createLlmFetch,
-  duckDuckGo,
-} from "../dist/index.js";
+import { createBuiltinContextGuard, createLlmFetch, duckDuckGo } from "../dist/index.js";
 
 const encoder = new TextEncoder();
-const paragraph =
-  "TypeScript retrieval uses bounded parsing and structured untrusted references. ";
-const guardText = paragraph
-  .repeat(Math.ceil(50_000 / paragraph.length))
-  .slice(0, 50_000);
+const paragraph = "TypeScript retrieval uses bounded parsing and structured untrusted references. ";
+const guardText = paragraph.repeat(Math.ceil(50_000 / paragraph.length)).slice(0, 50_000);
 const articleParagraph = `<p>${paragraph.repeat(12)}</p>`;
 const article = `<html><head><title>Benchmark</title></head><body><main>${articleParagraph.repeat(
   Math.ceil(1_000_000 / articleParagraph.length),
@@ -37,14 +30,10 @@ const duckProvider = duckDuckGo({
   maxResponseBytes: 100_000,
   fetch: async (url) =>
     new Response(
-      String(url).startsWith("https://links.duckduckgo.com/")
-        ? duckPayload
-        : duckBootstrap,
+      String(url).startsWith("https://links.duckduckgo.com/") ? duckPayload : duckBootstrap,
       {
         headers: {
-          "content-type": String(url).startsWith(
-            "https://links.duckduckgo.com/",
-          )
+          "content-type": String(url).startsWith("https://links.duckduckgo.com/")
             ? "application/javascript"
             : "text/html",
         },
@@ -67,10 +56,7 @@ const client = createLlmFetch({
 });
 
 function percentile(sorted, value) {
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil(sorted.length * value) - 1),
-  );
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * value) - 1));
   return sorted[index];
 }
 

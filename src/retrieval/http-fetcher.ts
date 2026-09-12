@@ -5,11 +5,7 @@ import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { LlmFetchError, toLlmFetchError } from "../errors.js";
 import { abortReason, isAbortSignal, waitWithSignal } from "../internal/abort-signal.js";
 import { PACKAGE_VERSION } from "../internal/version.js";
-import {
-  createDeadline,
-  throwIfDeadlineElapsed,
-  type Deadline,
-} from "../internal/deadline.js";
+import { createDeadline, throwIfDeadlineElapsed, type Deadline } from "../internal/deadline.js";
 import {
   defaultAddressResolver,
   resolveSafeOutboundUrl,
@@ -75,16 +71,11 @@ function headerValue(headers: IncomingHttpHeaders, name: string): string {
 }
 
 function normalizedContentType(headers: IncomingHttpHeaders): string {
-  return headerValue(headers, "content-type")
-    .split(";", 1)[0]
-    ?.trim()
-    .toLowerCase() ?? "";
+  return headerValue(headers, "content-type").split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
 
 function decoderFor(response: IncomingMessage): Transform {
-  const encoding = headerValue(response.headers, "content-encoding")
-    .trim()
-    .toLowerCase();
+  const encoding = headerValue(response.headers, "content-encoding").trim().toLowerCase();
   switch (encoding) {
     case "":
     case "identity":
@@ -161,9 +152,11 @@ function collectBody(
     });
     response.on("error", fail);
     response.on("aborted", () => {
-      fail(new LlmFetchError("UPSTREAM_HTTP", "The response ended unexpectedly.", {
-        retryable: true,
-      }));
+      fail(
+        new LlmFetchError("UPSTREAM_HTTP", "The response ended unexpectedly.", {
+          retryable: true,
+        }),
+      );
     });
     decoder.on("data", (chunk: Buffer) => {
       decodedBytes += chunk.length;
@@ -186,9 +179,11 @@ function collectBody(
     });
     decoder.on("close", () => {
       if (!settled) {
-        fail(new LlmFetchError("UPSTREAM_HTTP", "The decoded response ended unexpectedly.", {
-          retryable: true,
-        }));
+        fail(
+          new LlmFetchError("UPSTREAM_HTTP", "The decoded response ended unexpectedly.", {
+            retryable: true,
+          }),
+        );
       }
     });
     response.pipe(decoder);
@@ -216,10 +211,12 @@ function requestOnce(
         signal: deadline.signal(externalSignal),
         lookup: (_hostname, lookupOptions, callback) => {
           if (lookupOptions.all) {
-            callback(null, [{
-              address: pinnedAddress.address,
-              family: pinnedAddress.family,
-            }]);
+            callback(null, [
+              {
+                address: pinnedAddress.address,
+                family: pinnedAddress.family,
+              },
+            ]);
             return;
           }
           callback(null, pinnedAddress.address, pinnedAddress.family);
@@ -294,31 +291,23 @@ export function createSafeHttpFetcher(options: SafeHttpFetcherOptions = {}) {
   );
   const maxRedirects = options.maxRedirects ?? 3;
   if (!Number.isInteger(maxRedirects) || maxRedirects < 0 || maxRedirects > 10) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "maxRedirects must be an integer between 0 and 10.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "maxRedirects must be an integer between 0 and 10.");
   }
   const resolver = options.resolver ?? defaultAddressResolver;
   if (typeof resolver !== "function") {
     throw new LlmFetchError("INVALID_INPUT", "resolver must be a function.");
   }
-  if (
-    options.allowedContentTypes !== undefined &&
-    !Array.isArray(options.allowedContentTypes)
-  ) {
+  if (options.allowedContentTypes !== undefined && !Array.isArray(options.allowedContentTypes)) {
     throw new LlmFetchError("INVALID_INPUT", "allowedContentTypes must be an array.");
   }
   const allowedContentTypes = new Set(
     (options.allowedContentTypes ?? [...DEFAULT_ALLOWED_CONTENT_TYPES]).map((type) =>
-      typeof type === "string" ? type.trim().toLowerCase() : ""
+      typeof type === "string" ? type.trim().toLowerCase() : "",
     ),
   );
   if (
     allowedContentTypes.size === 0 ||
-    [...allowedContentTypes].some(
-      (type) => !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(type),
-    )
+    [...allowedContentTypes].some((type) => !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(type))
   ) {
     throw new LlmFetchError("INVALID_INPUT", "allowedContentTypes contains an invalid media type.");
   }
@@ -393,11 +382,10 @@ export function createSafeHttpFetcher(options: SafeHttpFetcherOptions = {}) {
       if (REDIRECT_STATUSES.has(response.status)) {
         const location = headerValue(response.headers, "location");
         if (!location || redirectCount >= maxRedirects) {
-          throw new LlmFetchError(
-            "UPSTREAM_HTTP",
-            "The redirect limit was exceeded.",
-            { url: currentUrl, status: response.status },
-          );
+          throw new LlmFetchError("UPSTREAM_HTTP", "The redirect limit was exceeded.", {
+            url: currentUrl,
+            status: response.status,
+          });
         }
         try {
           currentUrl = new URL(location, resolved.url).toString();

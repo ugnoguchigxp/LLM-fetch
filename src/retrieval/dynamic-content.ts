@@ -1,19 +1,8 @@
 import type { CheerioAPI } from "cheerio";
-import {
-  domNodeAttributes,
-  domNodeChildren,
-  domNodeData,
-  domNodeName,
-} from "./html-limits.js";
+import { domNodeAttributes, domNodeChildren, domNodeData, domNodeName } from "./html-limits.js";
 
 const APP_ROOT_IDS = new Set(["__next", "__nuxt", "app", "root"]);
-const EXCLUDED_TEXT_ELEMENTS = new Set([
-  "script",
-  "style",
-  "noscript",
-  "template",
-  "svg",
-]);
+const EXCLUDED_TEXT_ELEMENTS = new Set(["script", "style", "noscript", "template", "svg"]);
 
 function normalizedLength(value: string): number {
   return value.replace(/\s+/gu, " ").trim().length;
@@ -102,9 +91,8 @@ export function isLikelyDynamicHtml($: CheerioAPI, rawHtml: string): boolean {
   if (bodyLength >= 500) return false;
 
   const hasEmptyAppRoot = hasAppRoot && normalizedLength(appRootText) < 120;
-  hasFrameworkPayload ||= /(?:\/_next\/static\/|\/_nuxt\/|data-reactroot|data-v-app|ng-version)/iu.test(
-    rawHtml,
-  );
+  hasFrameworkPayload ||=
+    /(?:\/_next\/static\/|\/_nuxt\/|data-reactroot|data-v-app|ng-version)/iu.test(rawHtml);
 
   return (
     (hasEmptyAppRoot && hasExecutableScripts) ||

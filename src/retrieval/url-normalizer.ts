@@ -18,8 +18,7 @@ export function unwrapDuckDuckGoUrl(rawUrl: string): string {
   }
 
   if (
-    (url.hostname === "duckduckgo.com" ||
-      url.hostname.endsWith(".duckduckgo.com")) &&
+    (url.hostname === "duckduckgo.com" || url.hostname.endsWith(".duckduckgo.com")) &&
     url.pathname.startsWith("/l/")
   ) {
     const destination = url.searchParams.get("uddg");

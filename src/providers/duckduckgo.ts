@@ -6,11 +6,7 @@ import type {
   TimeRange,
 } from "../contracts.js";
 import { LlmFetchError, toLlmFetchError } from "../errors.js";
-import {
-  abortReason,
-  isAbortSignal,
-  waitWithSignal,
-} from "../internal/abort-signal.js";
+import { abortReason, isAbortSignal, waitWithSignal } from "../internal/abort-signal.js";
 import { createDeadline } from "../internal/deadline.js";
 import { readResponseBytes } from "../internal/read-response.js";
 import {
@@ -32,10 +28,7 @@ const ALLOWED_REDIRECT_HOSTS = new Set([
   "links.duckduckgo.com",
   "lite.duckduckgo.com",
 ]);
-const HTML_CONTENT_TYPES = new Set([
-  "text/html",
-  "application/xhtml+xml",
-]);
+const HTML_CONTENT_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 const SCRIPT_CONTENT_TYPES = new Set([
   "application/javascript",
   "application/x-javascript",
@@ -95,11 +88,7 @@ function validateUserAgent(value: string | undefined): string {
     );
   }
   const userAgent = rawUserAgent.trim();
-  if (
-    !userAgent ||
-    userAgent.length > 512 ||
-    containsControlCharacter(userAgent)
-  ) {
+  if (!userAgent || userAgent.length > 512 || containsControlCharacter(userAgent)) {
     throw new LlmFetchError(
       "INVALID_INPUT",
       "userAgent must contain between 1 and 512 header-safe characters.",
@@ -114,13 +103,10 @@ function withDuckDuckGoContext(error: LlmFetchError): LlmFetchError {
   return new LlmFetchError(error.code, error.message, {
     cause: error,
     provider: "duckduckgo",
-    retryable:
-      error.code === "UPSTREAM_HTTP" ? true : error.retryable,
+    retryable: error.code === "UPSTREAM_HTTP" ? true : error.retryable,
     ...(error.url === undefined ? {} : { url: error.url }),
     ...(error.status === undefined ? {} : { status: error.status }),
-    ...(error.cooldownMs === undefined
-      ? {}
-      : { cooldownMs: error.cooldownMs }),
+    ...(error.cooldownMs === undefined ? {} : { cooldownMs: error.cooldownMs }),
   });
 }
 
@@ -206,35 +192,76 @@ const DEFAULT_REGION_BY_LANGUAGE: Readonly<Record<string, string>> = {
   zh: "CN",
 };
 const DUCKDUCKGO_REGION_CODES = new Map([
-  ["AR:es", "ar-es"], ["AU:en", "au-en"], ["AT:de", "at-de"],
-  ["BE:fr", "be-fr"], ["BE:nl", "be-nl"], ["BR:pt", "br-pt"],
-  ["BG:bg", "bg-bg"], ["CA:en", "ca-en"], ["CA:fr", "ca-fr"],
-  ["CL:es", "cl-es"], ["CN:zh", "cn-zh"], ["CO:es", "co-es"],
-  ["HR:hr", "hr-hr"], ["CZ:cs", "cz-cs"], ["DK:da", "dk-da"],
-  ["EE:et", "ee-et"], ["FI:fi", "fi-fi"], ["FR:fr", "fr-fr"],
-  ["DE:de", "de-de"], ["GR:el", "gr-el"], ["HK:zh", "hk-tzh"],
-  ["HU:hu", "hu-hu"], ["IN:en", "in-en"], ["ID:id", "id-id"],
-  ["ID:en", "id-en"], ["IE:en", "ie-en"], ["IL:he", "il-he"],
-  ["IT:it", "it-it"], ["JP:ja", "jp-jp"], ["KR:ko", "kr-kr"],
-  ["LV:lv", "lv-lv"], ["LT:lt", "lt-lt"], ["MY:ms", "my-ms"],
-  ["MY:en", "my-en"], ["MX:es", "mx-es"], ["NL:nl", "nl-nl"],
-  ["NZ:en", "nz-en"], ["NO:no", "no-no"], ["PE:es", "pe-es"],
-  ["PH:en", "ph-en"], ["PH:tl", "ph-tl"], ["PL:pl", "pl-pl"],
-  ["PT:pt", "pt-pt"], ["RO:ro", "ro-ro"], ["RU:ru", "ru-ru"],
-  ["SG:en", "sg-en"], ["SK:sk", "sk-sk"], ["SI:sl", "sl-sl"],
-  ["ZA:en", "za-en"], ["ES:es", "es-es"], ["SE:sv", "se-sv"],
-  ["CH:de", "ch-de"], ["CH:fr", "ch-fr"], ["CH:it", "ch-it"],
-  ["TW:zh", "tw-tzh"], ["TH:th", "th-th"], ["TR:tr", "tr-tr"],
-  ["UA:uk", "ua-uk"], ["GB:en", "uk-en"], ["US:en", "us-en"],
-  ["US:es", "ue-es"], ["VE:es", "ve-es"], ["VN:vi", "vn-vi"],
+  ["AR:es", "ar-es"],
+  ["AU:en", "au-en"],
+  ["AT:de", "at-de"],
+  ["BE:fr", "be-fr"],
+  ["BE:nl", "be-nl"],
+  ["BR:pt", "br-pt"],
+  ["BG:bg", "bg-bg"],
+  ["CA:en", "ca-en"],
+  ["CA:fr", "ca-fr"],
+  ["CL:es", "cl-es"],
+  ["CN:zh", "cn-zh"],
+  ["CO:es", "co-es"],
+  ["HR:hr", "hr-hr"],
+  ["CZ:cs", "cz-cs"],
+  ["DK:da", "dk-da"],
+  ["EE:et", "ee-et"],
+  ["FI:fi", "fi-fi"],
+  ["FR:fr", "fr-fr"],
+  ["DE:de", "de-de"],
+  ["GR:el", "gr-el"],
+  ["HK:zh", "hk-tzh"],
+  ["HU:hu", "hu-hu"],
+  ["IN:en", "in-en"],
+  ["ID:id", "id-id"],
+  ["ID:en", "id-en"],
+  ["IE:en", "ie-en"],
+  ["IL:he", "il-he"],
+  ["IT:it", "it-it"],
+  ["JP:ja", "jp-jp"],
+  ["KR:ko", "kr-kr"],
+  ["LV:lv", "lv-lv"],
+  ["LT:lt", "lt-lt"],
+  ["MY:ms", "my-ms"],
+  ["MY:en", "my-en"],
+  ["MX:es", "mx-es"],
+  ["NL:nl", "nl-nl"],
+  ["NZ:en", "nz-en"],
+  ["NO:no", "no-no"],
+  ["PE:es", "pe-es"],
+  ["PH:en", "ph-en"],
+  ["PH:tl", "ph-tl"],
+  ["PL:pl", "pl-pl"],
+  ["PT:pt", "pt-pt"],
+  ["RO:ro", "ro-ro"],
+  ["RU:ru", "ru-ru"],
+  ["SG:en", "sg-en"],
+  ["SK:sk", "sk-sk"],
+  ["SI:sl", "sl-sl"],
+  ["ZA:en", "za-en"],
+  ["ES:es", "es-es"],
+  ["SE:sv", "se-sv"],
+  ["CH:de", "ch-de"],
+  ["CH:fr", "ch-fr"],
+  ["CH:it", "ch-it"],
+  ["TW:zh", "tw-tzh"],
+  ["TH:th", "th-th"],
+  ["TR:tr", "tr-tr"],
+  ["UA:uk", "ua-uk"],
+  ["GB:en", "uk-en"],
+  ["US:en", "us-en"],
+  ["US:es", "ue-es"],
+  ["VE:es", "ve-es"],
+  ["VN:vi", "vn-vi"],
 ]);
 
 function duckDuckGoRegion(input: SearchInput): string | undefined {
   if (input.locale) return input.locale.trim();
   const language = input.language?.toLowerCase();
   const region =
-    input.region?.toUpperCase() ??
-    (language ? DEFAULT_REGION_BY_LANGUAGE[language] : undefined);
+    input.region?.toUpperCase() ?? (language ? DEFAULT_REGION_BY_LANGUAGE[language] : undefined);
   if (!region) {
     if (!language) return undefined;
     throw new LlmFetchError(
@@ -245,9 +272,7 @@ function duckDuckGoRegion(input: SearchInput): string | undefined {
   }
   const code = language
     ? DUCKDUCKGO_REGION_CODES.get(`${region}:${language}`)
-    : [...DUCKDUCKGO_REGION_CODES].find(([key]) =>
-        key.startsWith(`${region}:`),
-      )?.[1];
+    : [...DUCKDUCKGO_REGION_CODES].find(([key]) => key.startsWith(`${region}:`))?.[1];
   if (!code) {
     throw new LlmFetchError(
       "INVALID_INPUT",
@@ -258,17 +283,11 @@ function duckDuckGoRegion(input: SearchInput): string | undefined {
   return code;
 }
 
-function validateSearchInput(
-  input: SearchInput,
-): Required<Pick<SearchInput, "query" | "limit">> {
+function validateSearchInput(input: SearchInput): Required<Pick<SearchInput, "query" | "limit">> {
   if (!input || typeof input !== "object" || typeof input.query !== "string") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Search input and query are required.",
-      {
-        provider: "duckduckgo",
-      },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Search input and query are required.", {
+      provider: "duckduckgo",
+    });
   }
   const query = input.query.trim();
   const limit = input.limit ?? 10;
@@ -280,11 +299,9 @@ function validateSearchInput(
     );
   }
   if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Search limit must be an integer between 1 and 20.",
-      { provider: "duckduckgo" },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Search limit must be an integer between 1 and 20.", {
+      provider: "duckduckgo",
+    });
   }
   if (
     input.safeSearch !== undefined &&
@@ -304,9 +321,7 @@ function validateSearchInput(
   }
   if (
     input.locale !== undefined &&
-    (typeof input.locale !== "string" ||
-      !input.locale.trim() ||
-      input.locale.length > 100)
+    (typeof input.locale !== "string" || !input.locale.trim() || input.locale.length > 100)
   ) {
     throw new LlmFetchError("INVALID_INPUT", "locale is invalid.", {
       provider: "duckduckgo",
@@ -314,8 +329,7 @@ function validateSearchInput(
   }
   if (
     input.language !== undefined &&
-    (typeof input.language !== "string" ||
-      !/^[a-z]{2}$/iu.test(input.language))
+    (typeof input.language !== "string" || !/^[a-z]{2}$/iu.test(input.language))
   ) {
     throw new LlmFetchError("INVALID_INPUT", "language is invalid.", {
       provider: "duckduckgo",
@@ -330,11 +344,9 @@ function validateSearchInput(
     });
   }
   if (input.locale && (input.language || input.region)) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "locale cannot be combined with language or region.",
-      { provider: "duckduckgo" },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "locale cannot be combined with language or region.", {
+      provider: "duckduckgo",
+    });
   }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.", {
@@ -347,29 +359,17 @@ function validateSearchInput(
 
 export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "DuckDuckGo options must be an object.",
-      {
-        provider: "duckduckgo",
-      },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "DuckDuckGo options must be an object.", {
+      provider: "duckduckgo",
+    });
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") {
-    throw new LlmFetchError(
-      "CONFIG_MISSING",
-      "A Fetch implementation is required.",
-      {
-        provider: "duckduckgo",
-      },
-    );
+    throw new LlmFetchError("CONFIG_MISSING", "A Fetch implementation is required.", {
+      provider: "duckduckgo",
+    });
   }
-  const timeoutMs = positiveInteger(
-    options.timeoutMs ?? 4_000,
-    "timeoutMs",
-    300_000,
-  );
+  const timeoutMs = positiveInteger(options.timeoutMs ?? 4_000, "timeoutMs", 300_000);
   const maxResponseBytes = positiveInteger(
     options.maxResponseBytes ?? 750_000,
     "maxResponseBytes",
@@ -486,28 +486,20 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
         const location = response.headers.get("location");
         discardBody(response);
         if (!location || redirects === 2) {
-          throw new LlmFetchError(
-            "UPSTREAM_HTTP",
-            "DuckDuckGo returned too many redirects.",
-            {
-              provider: "duckduckgo",
-              status: response.status,
-              retryable: true,
-            },
-          );
+          throw new LlmFetchError("UPSTREAM_HTTP", "DuckDuckGo returned too many redirects.", {
+            provider: "duckduckgo",
+            status: response.status,
+            retryable: true,
+          });
         }
         try {
           current = new URL(location, current);
         } catch (error) {
-          throw new LlmFetchError(
-            "UPSTREAM_HTTP",
-            "DuckDuckGo returned an invalid redirect.",
-            {
-              provider: "duckduckgo",
-              status: response.status,
-              cause: error,
-            },
-          );
+          throw new LlmFetchError("UPSTREAM_HTTP", "DuckDuckGo returned an invalid redirect.", {
+            provider: "duckduckgo",
+            status: response.status,
+            cause: error,
+          });
         }
         if (
           current.protocol !== "https:" ||
@@ -516,11 +508,9 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
           current.password !== "" ||
           !ALLOWED_REDIRECT_HOSTS.has(current.hostname.toLowerCase())
         ) {
-          throw new LlmFetchError(
-            "UNSAFE_URL",
-            "DuckDuckGo redirected to an unexpected host.",
-            { provider: "duckduckgo" },
-          );
+          throw new LlmFetchError("UNSAFE_URL", "DuckDuckGo redirected to an unexpected host.", {
+            provider: "duckduckgo",
+          });
         }
         if ([301, 302, 303].includes(response.status)) method = "GET";
         continue;
@@ -528,45 +518,36 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
 
       if (response.status === 429) {
         discardBody(response);
-        throw new LlmFetchError(
-          "RATE_LIMITED",
-          "DuckDuckGo rate limited the request.",
-          {
-            provider: "duckduckgo",
-            status: 429,
-            retryable: true,
-            cooldownMs: 60_000,
-          },
-        );
+        throw new LlmFetchError("RATE_LIMITED", "DuckDuckGo rate limited the request.", {
+          provider: "duckduckgo",
+          status: 429,
+          retryable: true,
+          cooldownMs: 60_000,
+        });
       }
       if (response.status === 202) {
         discardBody(response);
-        throw new LlmFetchError(
-          "BOT_CHALLENGE",
-          "DuckDuckGo returned a bot challenge.",
-          {
-            provider: "duckduckgo",
-            status: response.status,
-            retryable: true,
-            cooldownMs: 60_000,
-          },
-        );
+        throw new LlmFetchError("BOT_CHALLENGE", "DuckDuckGo returned a bot challenge.", {
+          provider: "duckduckgo",
+          status: response.status,
+          retryable: true,
+          cooldownMs: 60_000,
+        });
       }
       if (response.status >= 500) {
         discardBody(response);
-        throw new LlmFetchError(
-          "UPSTREAM_HTTP",
-          `DuckDuckGo returned HTTP ${response.status}.`,
-          { provider: "duckduckgo", status: response.status, retryable: true },
-        );
+        throw new LlmFetchError("UPSTREAM_HTTP", `DuckDuckGo returned HTTP ${response.status}.`, {
+          provider: "duckduckgo",
+          status: response.status,
+          retryable: true,
+        });
       }
       if (!response.ok) {
         discardBody(response);
-        throw new LlmFetchError(
-          "UPSTREAM_HTTP",
-          `DuckDuckGo returned HTTP ${response.status}.`,
-          { provider: "duckduckgo", status: response.status },
-        );
+        throw new LlmFetchError("UPSTREAM_HTTP", `DuckDuckGo returned HTTP ${response.status}.`, {
+          provider: "duckduckgo",
+          status: response.status,
+        });
       }
 
       const contentType = response.headers
@@ -587,11 +568,7 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
       }
       let bytes: Uint8Array;
       try {
-        bytes = await readResponseBytes(
-          response,
-          maxResponseBytes,
-          deadline.signal(input.signal),
-        );
+        bytes = await readResponseBytes(response, maxResponseBytes, deadline.signal(input.signal));
       } catch (error) {
         if (error instanceof LlmFetchError) {
           throw withDuckDuckGoContext(error);
@@ -616,14 +593,10 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
       }
       return new TextDecoder().decode(bytes);
     }
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      "DuckDuckGo request did not complete.",
-      {
-        provider: "duckduckgo",
-        retryable: true,
-      },
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", "DuckDuckGo request did not complete.", {
+      provider: "duckduckgo",
+      retryable: true,
+    });
   }
 
   function searchForm(input: SearchInput, query: string): URLSearchParams {
@@ -741,10 +714,7 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
       const deadline = createDeadline(timeoutMs);
       let observedChallenge: LlmFetchError | undefined;
       const observeFailure = (error: unknown): void => {
-        if (
-          error instanceof LlmFetchError &&
-          error.code === "BOT_CHALLENGE"
-        ) {
+        if (error instanceof LlmFetchError && error.code === "BOT_CHALLENGE") {
           observedChallenge = error;
         }
       };
@@ -756,20 +726,13 @@ export function duckDuckGo(options: DuckDuckGoOptions = {}): SearchProvider {
           observeFailure(error);
           if (!canTryAlternate(error)) throw error;
         }
-        return await searchNonJavaScript(
-          input,
-          query,
-          limit,
-          deadline,
-          observeFailure,
-        );
+        return await searchNonJavaScript(input, query, limit, deadline, observeFailure);
       } catch (error) {
         const finalError = preferObservedChallenge(error, observedChallenge);
         rememberCooldown(finalError);
         if (
           finalError !== observedChallenge &&
-          (!(finalError instanceof LlmFetchError) ||
-            finalError.code !== "RATE_LIMITED")
+          (!(finalError instanceof LlmFetchError) || finalError.code !== "RATE_LIMITED")
         ) {
           rememberCooldown(observedChallenge);
         }

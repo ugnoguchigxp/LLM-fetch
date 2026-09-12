@@ -11,13 +11,10 @@ const npmCli = process.env.npm_execpath;
 if (typeof npmCli !== "string" || !npmCli) {
   throw new Error("npm_execpath is required; run this check through npm.");
 }
-const packageManifest = JSON.parse(
-  await readFile(join(projectRoot, "package.json"), "utf8"),
-);
+const packageManifest = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
 const packageSpecifier = JSON.stringify(packageManifest.name);
-const playwrightSpecifier = JSON.stringify(
-  `${packageManifest.name}/playwright`,
-);
+const playwrightSpecifier = JSON.stringify(`${packageManifest.name}/playwright`);
+const playwrightVersion = packageManifest.peerDependencies?.["playwright-core"];
 
 async function run(command, arguments_, cwd = projectRoot) {
   return execFileAsync(command, arguments_, {
@@ -32,12 +29,7 @@ async function runNpm(arguments_, cwd = projectRoot) {
 }
 
 try {
-  const packed = await runNpm([
-    "pack",
-    "--json",
-    "--pack-destination",
-    temporaryDirectory,
-  ]);
+  const packed = await runNpm(["pack", "--json", "--pack-destination", temporaryDirectory]);
   const jsonStart = packed.stdout.lastIndexOf("\n[");
   const packResult = JSON.parse(
     jsonStart >= 0 ? packed.stdout.slice(jsonStart + 1) : packed.stdout,
@@ -53,9 +45,7 @@ try {
   ) {
     throw new Error("npm pack metadata does not match package.json.");
   }
-  const packedPaths = new Set(
-    (packedMetadata.files ?? []).map((entry) => entry.path),
-  );
+  const packedPaths = new Set((packedMetadata.files ?? []).map((entry) => entry.path));
   for (const requiredPath of [
     "LICENSE",
     "NOTICE",
@@ -114,8 +104,9 @@ try {
     if (
       !Array.isArray(sourceMap.sources) ||
       sourceMap.sources.length === 0 ||
-      sourceMap.sources.some((source) =>
-        typeof source !== "string" || source.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(source)
+      sourceMap.sources.some(
+        (source) =>
+          typeof source !== "string" || source.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(source),
       ) ||
       !Array.isArray(sourceMap.sourcesContent) ||
       sourceMap.sourcesContent.length !== sourceMap.sources.length ||
@@ -127,16 +118,9 @@ try {
 
   try {
     await access(join(temporaryDirectory, "node_modules", "playwright-core"));
-    throw new Error(
-      "A core-only install unexpectedly included playwright-core.",
-    );
+    throw new Error("A core-only install unexpectedly included playwright-core.");
   } catch (error) {
-    if (!(
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    )) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
       throw error;
     }
   }
@@ -245,11 +229,21 @@ try {
   if (!/src[\\/]client-validation\.ts:\d+/u.test(sourceMapStderr)) {
     throw new Error("Packed stack trace did not resolve to the TypeScript source.");
   }
+  if (typeof playwrightVersion !== "string" || !playwrightVersion) {
+    throw new Error("playwright-core must declare a peer dependency version.");
+  }
+  await runNpm(
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      `playwright-core@${playwrightVersion}`,
+    ],
+    temporaryDirectory,
+  );
   const typescriptPackage = JSON.parse(
-    await readFile(
-      join(projectRoot, "node_modules", "typescript", "package.json"),
-      "utf8",
-    ),
+    await readFile(join(projectRoot, "node_modules", "typescript", "package.json"), "utf8"),
   );
   await run(process.execPath, [
     join(projectRoot, "node_modules", "typescript", typescriptPackage.bin.tsc),
@@ -262,9 +256,7 @@ try {
     join(temporaryDirectory, "tsconfig.bundler.json"),
   ]);
 
-  process.stdout.write(
-    "Packed ESM, CommonJS, types, and core-only install verified.\n",
-  );
+  process.stdout.write("Packed ESM, CommonJS, types, and core-only install verified.\n");
 } finally {
   await rm(temporaryDirectory, { recursive: true, force: true });
 }

@@ -35,10 +35,7 @@ async function writeEvidence(mode, result) {
     recursive: true,
   });
   await writeFile(
-    new URL(
-      `../.release-evidence/provider-canary-${mode}.json`,
-      import.meta.url,
-    ),
+    new URL(`../.release-evidence/provider-canary-${mode}.json`, import.meta.url),
     `${JSON.stringify(evidence, null, 2)}\n`,
     { mode: 0o600 },
   );
@@ -49,10 +46,7 @@ async function runCanary() {
   if (requestedMode !== "duckduckgo" && requestedMode !== "brave") {
     throw new Error("Unknown provider canary mode.");
   }
-  if (
-    requestedMode === "brave" &&
-    !process.env.BRAVE_SEARCH_API_KEY?.trim()
-  ) {
+  if (requestedMode === "brave" && !process.env.BRAVE_SEARCH_API_KEY?.trim()) {
     throw new Error("The Brave provider canary is not configured.");
   }
   const provider =
@@ -91,11 +85,7 @@ try {
       ? error.code
       : "CANARY_FAILED";
   const provider =
-    requestedMode === "brave"
-      ? "brave"
-      : requestedMode === "duckduckgo"
-        ? "duckduckgo"
-        : "unknown";
+    requestedMode === "brave" ? "brave" : requestedMode === "duckduckgo" ? "duckduckgo" : "unknown";
   if (provider !== "unknown") {
     try {
       await writeEvidence(requestedMode, {
@@ -107,8 +97,6 @@ try {
       // The sanitized stderr result remains available if evidence I/O fails.
     }
   }
-  process.stderr.write(
-    `${JSON.stringify({ provider, status: "failed", code })}\n`,
-  );
+  process.stderr.write(`${JSON.stringify({ provider, status: "failed", code })}\n`);
   process.exitCode = 1;
 }

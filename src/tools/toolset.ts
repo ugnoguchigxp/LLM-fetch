@@ -9,13 +9,7 @@ import type {
 } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
 
-type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonSchema = Record<string, JsonValue>;
 
 function isJsonObject(value: JsonValue | undefined): value is JsonSchema {
@@ -48,9 +42,7 @@ function openAiStrictSchema(schema: JsonSchema): JsonSchema {
     if (result.type === "object" && isJsonObject(result.properties)) {
       const originalRequired = new Set(
         Array.isArray(result.required)
-          ? result.required.filter(
-              (item): item is string => typeof item === "string",
-            )
+          ? result.required.filter((item): item is string => typeof item === "string")
           : [],
       );
       const properties = Object.fromEntries(
@@ -209,33 +201,20 @@ function objectInput(input: unknown): Record<string, unknown> {
   return input as Record<string, unknown>;
 }
 
-function assertAllowedFields(
-  input: Record<string, unknown>,
-  allowed: readonly string[],
-): void {
+function assertAllowedFields(input: Record<string, unknown>, allowed: readonly string[]): void {
   const allowedSet = new Set(allowed);
   if (Object.keys(input).some((key) => !allowedSet.has(key))) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Tool input contains an unexpected field.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Tool input contains an unexpected field.");
   }
 }
 
-function stringField(
-  input: Record<string, unknown>,
-  name: string,
-  maxLength: number,
-): string {
+function stringField(input: Record<string, unknown>, name: string, maxLength: number): string {
   if (!Object.hasOwn(input, name)) {
     throw new LlmFetchError("INVALID_INPUT", `${name} is required.`);
   }
   const value = input[name];
   if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      `${name} must be a non-empty string.`,
-    );
+    throw new LlmFetchError("INVALID_INPUT", `${name} must be a non-empty string.`);
   }
   return value.trim();
 }
@@ -249,11 +228,7 @@ function optionalInteger(
   if (!Object.hasOwn(input, name)) return undefined;
   const value = input[name];
   if (value === undefined || value === null) return undefined;
-  if (
-    !Number.isInteger(value) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
+  if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
     throw new LlmFetchError(
       "INVALID_INPUT",
       `${name} must be an integer between ${minimum} and ${maximum}.`,
@@ -326,10 +301,7 @@ export function createToolset(
         },
       }));
     },
-    async execute(
-      name: string,
-      rawInput: unknown,
-    ): Promise<ToolExecutionResult> {
+    async execute(name: string, rawInput: unknown): Promise<ToolExecutionResult> {
       const input = objectInput(rawInput);
       switch (name) {
         case "web_search": {
@@ -363,8 +335,7 @@ export function createToolset(
         case "fetch_content": {
           assertAllowedFields(input, ["url", "maxCharacters"]);
           const url = stringField(input, "url", 2_048);
-          const maxCharacters =
-            optionalInteger(input, "maxCharacters", 200, 20_000) ?? 5_000;
+          const maxCharacters = optionalInteger(input, "maxCharacters", 200, 20_000) ?? 5_000;
           const readInput: ReadInput = {
             url,
             maxCharacters,

@@ -6,16 +6,9 @@ import type {
   Route,
 } from "playwright-core";
 import type * as PlaywrightCore from "playwright-core";
-import type {
-  ContentRetrievalResult,
-  ContentRetriever,
-} from "../retrieval/content-retriever.js";
+import type { ContentRetrievalResult, ContentRetriever } from "../retrieval/content-retriever.js";
 import { LlmFetchError, toLlmFetchError } from "../errors.js";
-import {
-  abortReason,
-  isAbortSignal,
-  waitWithSignal,
-} from "../internal/abort-signal.js";
+import { abortReason, isAbortSignal, waitWithSignal } from "../internal/abort-signal.js";
 import { PACKAGE_VERSION } from "../internal/version.js";
 import {
   defaultAddressResolver,
@@ -36,13 +29,7 @@ import { waitForRenderedContent } from "./retriever-settle.js";
 
 export { monitorNetworkBudget };
 
-const ALLOWED_RESOURCE_TYPES = new Set([
-  "document",
-  "script",
-  "stylesheet",
-  "xhr",
-  "fetch",
-]);
+const ALLOWED_RESOURCE_TYPES = new Set(["document", "script", "stylesheet", "xhr", "fetch"]);
 const PLAYWRIGHT_LIMITATIONS = [
   "Browser JavaScript was executed in an isolated, non-persistent context.",
   "Browser routing and the pinned proxy are not an OS-level network sandbox.",
@@ -89,10 +76,7 @@ interface CachedResolution {
 
 type PlaywrightModule = typeof PlaywrightCore;
 
-function withOptionalSignal<T>(
-  operation: Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
+function withOptionalSignal<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   return signal ? waitWithSignal(operation, signal) : operation;
 }
 
@@ -112,11 +96,7 @@ function integerOption(
   maximum: number,
 ): number {
   const normalized = value ?? fallback;
-  if (
-    !Number.isInteger(normalized) ||
-    normalized < minimum ||
-    normalized > maximum
-  ) {
+  if (!Number.isInteger(normalized) || normalized < minimum || normalized > maximum) {
     throw new LlmFetchError(
       "INVALID_INPUT",
       `${name} must be an integer between ${minimum} and ${maximum}.`,
@@ -125,14 +105,9 @@ function integerOption(
   return normalized;
 }
 
-function normalizeOptions(
-  options: PlaywrightRetrieverOptions,
-): NormalizedOptions {
+function normalizeOptions(options: PlaywrightRetrieverOptions): NormalizedOptions {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Playwright options must be an object.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Playwright options must be an object.");
   }
   const resolver = options.resolver ?? defaultAddressResolver;
   if (typeof resolver !== "function") {
@@ -140,13 +115,9 @@ function normalizeOptions(
   }
   const externalSandbox = options.externalSandbox ?? false;
   if (typeof externalSandbox !== "boolean") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "externalSandbox must be a boolean.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "externalSandbox must be a boolean.");
   }
-  const userAgent =
-    options.userAgent ?? `llm-fetch-playwright/${PACKAGE_VERSION}`;
+  const userAgent = options.userAgent ?? `llm-fetch-playwright/${PACKAGE_VERSION}`;
   if (
     typeof userAgent !== "string" ||
     !userAgent.trim() ||
@@ -165,20 +136,8 @@ function normalizeOptions(
       100,
       60_000,
     ),
-    settleTimeoutMs: integerOption(
-      options.settleTimeoutMs,
-      750,
-      "settleTimeoutMs",
-      0,
-      5_000,
-    ),
-    maxRequests: integerOption(
-      options.maxRequests,
-      100,
-      "maxRequests",
-      1,
-      1_000,
-    ),
+    settleTimeoutMs: integerOption(options.settleTimeoutMs, 750, "settleTimeoutMs", 0, 5_000),
+    maxRequests: integerOption(options.maxRequests, 100, "maxRequests", 1, 1_000),
     maxResponseBytes: integerOption(
       options.maxResponseBytes,
       5_000_000,
@@ -193,20 +152,8 @@ function normalizeOptions(
       10_000,
       10_000_000,
     ),
-    maxDomNodes: integerOption(
-      options.maxDomNodes,
-      100_000,
-      "maxDomNodes",
-      100,
-      500_000,
-    ),
-    dnsCacheTtlMs: integerOption(
-      options.dnsCacheTtlMs,
-      1_000,
-      "dnsCacheTtlMs",
-      0,
-      10_000,
-    ),
+    maxDomNodes: integerOption(options.maxDomNodes, 100_000, "maxDomNodes", 100, 500_000),
+    dnsCacheTtlMs: integerOption(options.dnsCacheTtlMs, 1_000, "dnsCacheTtlMs", 0, 10_000),
     resolver,
     externalSandbox,
     userAgent,
@@ -229,9 +176,7 @@ function browserExecutableMissing(error: unknown): boolean {
   );
 }
 
-export function playwrightRetriever(
-  rawOptions: PlaywrightRetrieverOptions = {},
-): ContentRetriever {
+export function playwrightRetriever(rawOptions: PlaywrightRetrieverOptions = {}): ContentRetriever {
   const options = normalizeOptions(rawOptions);
   const gate = new BoundedGate(options.concurrency, options.maxQueue);
   const contexts = new Set<BrowserContext>();
@@ -254,8 +199,7 @@ export function playwrightRetriever(
     const now = Date.now();
     const existing = dnsCache.get(hostname);
     if (existing && existing.expiresAt >= now) return existing.promise;
-    if (dnsCache.size >= 128)
-      dnsCache.delete(dnsCache.keys().next().value as string);
+    if (dnsCache.size >= 128) dnsCache.delete(dnsCache.keys().next().value as string);
     const promise = options
       .resolver(hostname)
       .then((addresses) => addresses.map((address) => ({ ...address })));
@@ -263,8 +207,7 @@ export function playwrightRetriever(
     try {
       return await promise;
     } catch (error) {
-      if (dnsCache.get(hostname)?.promise === promise)
-        dnsCache.delete(hostname);
+      if (dnsCache.get(hostname)?.promise === promise) dnsCache.delete(hostname);
       throw error;
     }
   };
@@ -282,11 +225,7 @@ export function playwrightRetriever(
   };
 
   const ensureBrowser = async () => {
-    if (closed)
-      throw new LlmFetchError(
-        "CONFIG_MISSING",
-        "The Playwright retriever is closed.",
-      );
+    if (closed) throw new LlmFetchError("CONFIG_MISSING", "The Playwright retriever is closed.");
     if (browserValue?.isConnected()) return browserValue;
     if (!browserPromise) {
       browserPromise = (async () => {
@@ -302,10 +241,7 @@ export function playwrightRetriever(
               username: proxy.username,
               password: proxy.password,
             },
-            args: [
-              "--disable-quic",
-              "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-            ],
+            args: ["--disable-quic", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
           });
         } catch (error) {
           await proxy.close().catch(() => undefined);
@@ -332,16 +268,10 @@ export function playwrightRetriever(
     input: { signal?: AbortSignal } = {},
   ): Promise<ContentRetrievalResult> => {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "Playwright retrieval input must be an object.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "Playwright retrieval input must be an object.");
     }
     if (input.signal !== undefined && !isAbortSignal(input.signal)) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "signal must be an AbortSignal.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.");
     }
     const operationTimeout = AbortSignal.timeout(
       options.navigationTimeoutMs + options.settleTimeoutMs,
@@ -353,15 +283,9 @@ export function playwrightRetriever(
       return await gate.run(async () => {
         signal.throwIfAborted();
         if (closed) {
-          throw new LlmFetchError(
-            "CONFIG_MISSING",
-            "The Playwright retriever is closed.",
-          );
+          throw new LlmFetchError("CONFIG_MISSING", "The Playwright retriever is closed.");
         }
-        await withOptionalSignal(
-          resolveSafeOutboundUrl(url, cachedResolver),
-          signal,
-        );
+        await withOptionalSignal(resolveSafeOutboundUrl(url, cachedResolver), signal);
         const browser = await withOptionalSignal(ensureBrowser(), signal);
         let context: BrowserContext | undefined;
         let abortListener: (() => void) | undefined;
@@ -381,17 +305,13 @@ export function playwrightRetriever(
             context = await withOptionalSignal(contextCreation, signal);
           } catch (error) {
             void contextCreation
-              .then((createdContext) =>
-                createdContext.close({ reason: "Retrieval aborted" }),
-              )
+              .then((createdContext) => createdContext.close({ reason: "Retrieval aborted" }))
               .catch(() => undefined);
             throw error;
           }
           contexts.add(context);
           abortListener = () => {
-            void context
-              ?.close({ reason: "Retrieval aborted" })
-              .catch(() => undefined);
+            void context?.close({ reason: "Retrieval aborted" }).catch(() => undefined);
           };
           signal.addEventListener("abort", abortListener, { once: true });
           context.setDefaultNavigationTimeout(options.navigationTimeoutMs);
@@ -404,64 +324,52 @@ export function playwrightRetriever(
               reason: "WebSocket access is disabled",
             });
           });
-          await context.route(
-            "**/*",
-            async (route: Route, request: Request) => {
-              try {
-                requestCount += 1;
-                if (requestCount > options.maxRequests) {
-                  blockedError ??= new LlmFetchError(
-                    "RESPONSE_TOO_LARGE",
-                    "The rendered page exceeded the request limit.",
-                    { url: request.url() },
-                  );
-                  await route.abort("blockedbyclient");
-                  return;
-                }
-                if (!ALLOWED_RESOURCE_TYPES.has(request.resourceType())) {
-                  await route.abort("blockedbyclient");
-                  return;
-                }
-                if (
-                  request.resourceType() === "document" &&
-                  request.frame().parentFrame()
-                ) {
-                  await route.abort("blockedbyclient");
-                  return;
-                }
-                if (request.method() !== "GET" && request.method() !== "HEAD") {
-                  await route.abort("blockedbyclient");
-                  return;
-                }
-                await withOptionalSignal(
-                  resolveSafeOutboundUrl(request.url(), cachedResolver),
-                  signal,
+          await context.route("**/*", async (route: Route, request: Request) => {
+            try {
+              requestCount += 1;
+              if (requestCount > options.maxRequests) {
+                blockedError ??= new LlmFetchError(
+                  "RESPONSE_TOO_LARGE",
+                  "The rendered page exceeded the request limit.",
+                  { url: request.url() },
                 );
-                const headers = browserRequestHeaders(
-                  await request.allHeaders(),
-                );
-                await route.continue({ headers });
-              } catch (error) {
-                blockedError ??=
-                  error instanceof LlmFetchError
-                    ? error
-                    : toLlmFetchError(error, {
-                        code: "UNSAFE_URL",
-                        message:
-                          "The browser request was rejected by the outbound policy.",
-                        url: request.url(),
-                      });
-                await route.abort("blockedbyclient").catch(() => undefined);
+                await route.abort("blockedbyclient");
+                return;
               }
-            },
-          );
+              if (!ALLOWED_RESOURCE_TYPES.has(request.resourceType())) {
+                await route.abort("blockedbyclient");
+                return;
+              }
+              if (request.resourceType() === "document" && request.frame().parentFrame()) {
+                await route.abort("blockedbyclient");
+                return;
+              }
+              if (request.method() !== "GET" && request.method() !== "HEAD") {
+                await route.abort("blockedbyclient");
+                return;
+              }
+              await withOptionalSignal(
+                resolveSafeOutboundUrl(request.url(), cachedResolver),
+                signal,
+              );
+              const headers = browserRequestHeaders(await request.allHeaders());
+              await route.continue({ headers });
+            } catch (error) {
+              blockedError ??=
+                error instanceof LlmFetchError
+                  ? error
+                  : toLlmFetchError(error, {
+                      code: "UNSAFE_URL",
+                      message: "The browser request was rejected by the outbound policy.",
+                      url: request.url(),
+                    });
+              await route.abort("blockedbyclient").catch(() => undefined);
+            }
+          });
 
           await context.addInitScript(() => {
             const blocked = () => {
-              throw new DOMException(
-                "Blocked by llm-fetch browser policy",
-                "SecurityError",
-              );
+              throw new DOMException("Blocked by llm-fetch browser policy", "SecurityError");
             };
             Object.defineProperty(globalThis, "WebSocket", { value: blocked });
             Object.defineProperty(globalThis, "EventSource", {
@@ -486,32 +394,18 @@ export function playwrightRetriever(
           await cdp.send("Network.enable");
           monitorNetworkBudget(cdp, options.maxResponseBytes, (error) => {
             blockedError ??= error;
-            void context
-              ?.close({ reason: "Network byte limit exceeded" })
-              .catch(() => undefined);
+            void context?.close({ reason: "Network byte limit exceeded" }).catch(() => undefined);
           });
           context.on("page", (popup) => {
             if (popup !== page) void popup.close().catch(() => undefined);
           });
-          page.on(
-            "popup",
-            (popup) => void popup.close().catch(() => undefined),
-          );
-          page.on(
-            "download",
-            (download) => void download.cancel().catch(() => undefined),
-          );
-          page.on(
-            "dialog",
-            (dialog) => void dialog.dismiss().catch(() => undefined),
-          );
+          page.on("popup", (popup) => void popup.close().catch(() => undefined));
+          page.on("download", (download) => void download.cancel().catch(() => undefined));
+          page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
           let lastNavigationResponse: PlaywrightResponse | undefined;
           page.on("response", (candidate) => {
             const request = candidate.request();
-            if (
-              request.isNavigationRequest() &&
-              request.frame() === page.mainFrame()
-            ) {
+            if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
               lastNavigationResponse = candidate;
             }
           });
@@ -529,19 +423,11 @@ export function playwrightRetriever(
           }
           if (blockedError) throw blockedError;
           if (!response) {
-            throw new LlmFetchError(
-              "UPSTREAM_HTTP",
-              "Browser navigation returned no response.",
-              {
-                url,
-              },
-            );
+            throw new LlmFetchError("UPSTREAM_HTTP", "Browser navigation returned no response.", {
+              url,
+            });
           }
-          await validateNavigationResponse(
-            response,
-            options.maxResponseBytes,
-            signal,
-          );
+          await validateNavigationResponse(response, options.maxResponseBytes, signal);
           await waitForRenderedContent(
             page,
             cdp,
@@ -558,10 +444,7 @@ export function playwrightRetriever(
               {
                 maxHtmlCharacters: options.maxHtmlCharacters,
                 maxDomNodes: options.maxDomNodes,
-                evaluationTimeoutMs: Math.min(
-                  5_000,
-                  options.navigationTimeoutMs,
-                ),
+                evaluationTimeoutMs: Math.min(5_000, options.navigationTimeoutMs),
               },
               cdp,
             ),
@@ -570,10 +453,7 @@ export function playwrightRetriever(
           if (blockedError) throw blockedError;
           signal.throwIfAborted();
           const finalUrl = page.url();
-          await withOptionalSignal(
-            resolveSafeOutboundUrl(finalUrl, cachedResolver),
-            signal,
-          );
+          await withOptionalSignal(resolveSafeOutboundUrl(finalUrl, cachedResolver), signal);
           const finalResponse = lastNavigationResponse ?? response;
           const { status, headers } = await validateNavigationResponse(
             finalResponse,
@@ -623,24 +503,18 @@ export function playwrightRetriever(
           }
           if (context) {
             contexts.delete(context);
-            await context
-              .close({ reason: "Retrieval complete" })
-              .catch(() => undefined);
+            await context.close({ reason: "Retrieval complete" }).catch(() => undefined);
           }
         }
       }, signal);
     } catch (error) {
       if (input.signal?.aborted) throw abortReason(input.signal);
       if (operationTimeout.aborted) {
-        throw new LlmFetchError(
-          "TIMEOUT",
-          "Playwright retrieval exceeded its deadline.",
-          {
-            url,
-            retryable: true,
-            cause: error,
-          },
-        );
+        throw new LlmFetchError("TIMEOUT", "Playwright retrieval exceeded its deadline.", {
+          url,
+          retryable: true,
+          cause: error,
+        });
       }
       throw error;
     }
@@ -664,18 +538,14 @@ export function playwrightRetriever(
         dnsCache.clear();
         await Promise.all(
           [...contexts].map((context) =>
-            context
-              .close({ reason: "Retriever closed" })
-              .catch(() => undefined),
+            context.close({ reason: "Retriever closed" }).catch(() => undefined),
           ),
         );
         contexts.clear();
-        const browser =
-          browserValue ?? (await browserPromise?.catch(() => undefined));
+        const browser = browserValue ?? (await browserPromise?.catch(() => undefined));
         browserValue = undefined;
         browserPromise = undefined;
-        if (browser?.isConnected())
-          await browser.close().catch(() => undefined);
+        if (browser?.isConnected()) await browser.close().catch(() => undefined);
         const proxy = await proxyPromise?.catch(() => undefined);
         proxyPromise = undefined;
         if (proxy) await proxy.close();

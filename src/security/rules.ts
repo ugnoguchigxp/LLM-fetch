@@ -104,7 +104,8 @@ const RULES: readonly DetectionRule[] = [
   },
 ] as const;
 
-const BENIGN_CONTEXT = /\b(?:example|demonstration|article|discussion|detect(?:ion)?|prevention|attack pattern|quoted text)\b|(?:例|解説|説明|検出|防止|攻撃手法|引用)/iu;
+const BENIGN_CONTEXT =
+  /\b(?:example|demonstration|article|discussion|detect(?:ion)?|prevention|attack pattern|quoted text)\b|(?:例|解説|説明|検出|防止|攻撃手法|引用)/iu;
 const SEVERITY_RANK: Record<SecurityFindingSeverity, number> = {
   info: 0,
   low: 1,
@@ -181,9 +182,7 @@ export function scanSegments(
     );
   }
   if (segments.length > maxSegments) {
-    truncationReasons.add(
-      "The content contained more segments than the inspection limit.",
-    );
+    truncationReasons.add("The content contained more segments than the inspection limit.");
   }
 
   const selectedSegments =
@@ -197,9 +196,7 @@ export function scanSegments(
   for (const [index, segment] of selectedSegments.entries()) {
     const remaining = maxCharacters - inspectedCharacters;
     if (remaining <= 0) {
-      truncationReasons.add(
-        "The content exceeded the total character inspection limit.",
-      );
+      truncationReasons.add("The content exceeded the total character inspection limit.");
       break;
     }
     const remainingSegments = selectedSegments.length - index;
@@ -215,9 +212,7 @@ export function scanSegments(
           }`;
     inspectedCharacters += text.length;
     if (text.length < segment.text.length) {
-      truncationReasons.add(
-        "The content exceeded the total character inspection limit.",
-      );
+      truncationReasons.add("The content exceeded the total character inspection limit.");
     }
     let segmentMatchedRule = false;
 
@@ -228,12 +223,7 @@ export function scanSegments(
       for (const rule of RULES) {
         if (!rule.all.every((pattern) => pattern.test(variant.text))) continue;
         segmentMatchedRule = true;
-        const finding = findingFor(
-          rule,
-          { ...segment, text },
-          variant.techniques,
-          options.profile,
-        );
+        const finding = findingFor(rule, { ...segment, text }, variant.techniques, options.profile);
         const key = `${finding.category}:${rule.category}:${finding.location}:${finding.segmentHash}`;
         if (keys.has(key)) continue;
         keys.add(key);

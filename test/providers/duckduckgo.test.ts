@@ -99,15 +99,13 @@ describe("DuckDuckGo parsers", () => {
   });
 
   it("distinguishes no results, challenge, and parser changes", () => {
-    expect(
-      parseDuckDuckGoHtml("<div class='no-results'>No results.</div>", 5),
-    ).toEqual([]);
+    expect(parseDuckDuckGoHtml("<div class='no-results'>No results.</div>", 5)).toEqual([]);
     expect(() =>
       parseDuckDuckGoHtml("<form class='challenge-form'>captcha</form>", 5),
     ).toThrowError(expect.objectContaining({ code: "BOT_CHALLENGE" }));
-    expect(() =>
-      parseDuckDuckGoHtml("<html><body>unexpected</body></html>", 5),
-    ).toThrowError(expect.objectContaining({ code: "PARSE_CHANGED" }));
+    expect(() => parseDuckDuckGoHtml("<html><body>unexpected</body></html>", 5)).toThrowError(
+      expect.objectContaining({ code: "PARSE_CHANGED" }),
+    );
   });
 
   it("rejects deeply nested provider HTML before parsing it", () => {
@@ -121,13 +119,8 @@ describe("DuckDuckGo parsers", () => {
   });
 
   it("does not mistake an ordinary CAPTCHA search result for a challenge", () => {
-    const html = HTML_RESULTS.replace(
-      "Example Article",
-      "CAPTCHA accessibility article",
-    );
-    expect(parseDuckDuckGoHtml(html, 10)[0]?.title).toBe(
-      "CAPTCHA accessibility article",
-    );
+    const html = HTML_RESULTS.replace("Example Article", "CAPTCHA accessibility article");
+    expect(parseDuckDuckGoHtml(html, 10)[0]?.title).toBe("CAPTCHA accessibility article");
   });
 
   it("extracts and validates the provider-signed Web preload URL", () => {
@@ -151,10 +144,7 @@ describe("DuckDuckGo parsers", () => {
   });
 
   it("rejects ambiguous duplicate security parameters in a preload URL", () => {
-    const bootstrap = bootstrapHtml("test").replace(
-      "q=test",
-      "q=test&amp;q=other",
-    );
+    const bootstrap = bootstrapHtml("test").replace("q=test", "q=test&amp;q=other");
     expect(() => extractDuckDuckGoPreloadUrl(bootstrap, "test")).toThrowError(
       expect.objectContaining({ code: "PARSE_CHANGED" }),
     );
@@ -177,9 +167,9 @@ describe("DuckDuckGo parsers", () => {
   });
 
   it("recognizes the signed Web anomaly challenge", () => {
-    expect(() =>
-      parseDuckDuckGoWeb("DDG.deep.anomalyDetectionBlock('x')", 5),
-    ).toThrowError(expect.objectContaining({ code: "BOT_CHALLENGE" }));
+    expect(() => parseDuckDuckGoWeb("DDG.deep.anomalyDetectionBlock('x')", 5)).toThrowError(
+      expect.objectContaining({ code: "BOT_CHALLENGE" }),
+    );
   });
 
   it("does not classify challenge terms inside ordinary results as a challenge", () => {
@@ -188,9 +178,7 @@ describe("DuckDuckGo parsers", () => {
       "a":"An article about the bot_challenge response name.",
       "u":"https://example.com/article"
     }]);`;
-    expect(parseDuckDuckGoWeb(payload, 1)[0]?.title).toBe(
-      "Understanding anomalyDetectionBlock",
-    );
+    expect(parseDuckDuckGoWeb(payload, 1)[0]?.title).toBe("Understanding anomalyDetectionBlock");
   });
 
   it("accepts an explicit empty signed Web result payload", () => {
@@ -228,22 +216,15 @@ describe("duckDuckGo provider", () => {
 
     expect(hits).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
-      URL,
-      RequestInit,
-    ];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
     expect(url.origin).toBe("https://duckduckgo.com");
     expect(url.searchParams.get("q")).toBe("typescript retrieval");
     expect(url.searchParams.get("kl")).toBe("jp-jp");
     expect(url.searchParams.get("kp")).toBe("1");
     expect(url.searchParams.get("df")).toBe("w");
     expect(init.method).toBe("GET");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
-      "https://links.duckduckgo.com/d.js?",
-    );
-    expect(
-      (init.headers as Record<string, string>)["user-agent"],
-    ).toContain("Mozilla/5.0");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("https://links.duckduckgo.com/d.js?");
+    expect((init.headers as Record<string, string>)["user-agent"]).toContain("Mozilla/5.0");
   });
 
   it("maps ISO language and region to the DuckDuckGo region parameter", async () => {
@@ -304,36 +285,24 @@ describe("duckDuckGo provider", () => {
       fetch: fetchMock as unknown as typeof fetch,
     });
 
-    await expect(provider.search({ query: "fallback" })).resolves.toHaveLength(
-      1,
-    );
+    await expect(provider.search({ query: "fallback" })).resolves.toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
-      "https://html.duckduckgo.com/html/",
-    );
-    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
-      "https://lite.duckduckgo.com/lite/",
-    );
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://html.duckduckgo.com/html/");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe("https://lite.duckduckgo.com/lite/");
     const liteInit = fetchMock.mock.calls[2]?.[1] as RequestInit;
-    expect(
-      (liteInit.headers as Record<string, string>)["sec-fetch-mode"],
-    ).toBe("navigate");
+    expect((liteInit.headers as Record<string, string>)["sec-fetch-mode"]).toBe("navigate");
   });
 
   it("returns a typed challenge when all routes respond with 202", async () => {
-    const fetchMock = vi.fn(
-      async () => new Response("challenge", { status: 202 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("challenge", { status: 202 }));
     const provider = duckDuckGo({
       fetch: fetchMock as unknown as typeof fetch,
     });
-    await expect(provider.search({ query: "challenge" })).rejects.toMatchObject(
-      {
-        code: "BOT_CHALLENGE",
-        status: 202,
-        retryable: true,
-      },
-    );
+    await expect(provider.search({ query: "challenge" })).rejects.toMatchObject({
+      code: "BOT_CHALLENGE",
+      status: 202,
+      retryable: true,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -362,9 +331,7 @@ describe("duckDuckGo provider", () => {
   });
 
   it("does not retry a rate limit through the Lite endpoint", async () => {
-    const fetchMock = vi.fn(
-      async () => new Response("limited", { status: 429 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("limited", { status: 429 }));
     const provider = duckDuckGo({
       fetch: fetchMock as unknown as typeof fetch,
     });
@@ -373,9 +340,7 @@ describe("duckDuckGo provider", () => {
       code: "RATE_LIMITED",
       retryable: true,
     } satisfies Partial<LlmFetchError>);
-    await expect(
-      provider.search({ query: "limited again" }),
-    ).rejects.toMatchObject({
+    await expect(provider.search({ query: "limited again" })).rejects.toMatchObject({
       code: "RATE_LIMITED",
       cooldownMs: expect.any(Number),
     });
@@ -432,14 +397,10 @@ describe("duckDuckGo provider", () => {
       fetch: fetchMock as unknown as typeof fetch,
     });
 
-    await expect(
-      provider.search({ query: "challenge body" }),
-    ).rejects.toMatchObject({
+    await expect(provider.search({ query: "challenge body" })).rejects.toMatchObject({
       code: "BOT_CHALLENGE",
     });
-    await expect(
-      provider.search({ query: "challenge cooldown" }),
-    ).rejects.toMatchObject({
+    await expect(provider.search({ query: "challenge cooldown" })).rejects.toMatchObject({
       code: "BOT_CHALLENGE",
       cooldownMs: expect.any(Number),
     });
@@ -454,26 +415,24 @@ describe("duckDuckGo provider", () => {
     await expect(provider.search({ query: "  " })).rejects.toMatchObject({
       code: "INVALID_INPUT",
     });
-    await expect(
-      provider.search({ query: "ok", limit: 21 }),
-    ).rejects.toMatchObject({
+    await expect(provider.search({ query: "ok", limit: 21 })).rejects.toMatchObject({
       code: "INVALID_INPUT",
     });
-    await expect(
-      provider.search({ query: "ok", language: "japanese" }),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(
-      provider.search({ query: "ok", region: "JPN" }),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(provider.search({ query: "ok", language: "japanese" })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+    await expect(provider.search({ query: "ok", region: "JPN" })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
     await expect(
       provider.search({ query: "ok", locale: "jp-jp", language: "ja" }),
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(
       provider.search({ query: "ok", language: "ja", region: "US" }),
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(
-      provider.search({ query: "ok", language: "xx" }),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(provider.search({ query: "ok", language: "xx" })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -516,9 +475,7 @@ describe("duckDuckGo provider", () => {
   it("times out a custom Fetch implementation that ignores its signal", async () => {
     const provider = duckDuckGo({
       timeoutMs: 5,
-      fetch: vi.fn(
-        () => new Promise<Response>(() => undefined),
-      ) as unknown as typeof fetch,
+      fetch: vi.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch,
     });
 
     await expect(provider.search({ query: "timeout" })).rejects.toMatchObject({

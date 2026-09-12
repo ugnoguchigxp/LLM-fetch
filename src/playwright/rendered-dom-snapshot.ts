@@ -28,10 +28,7 @@ function collectRenderedDomSnapshot(options: {
   const originalBody = document.body;
   const originalElements: Element[] = [];
   let allNodes = 1;
-  const elementWalker = document.createTreeWalker(
-    root,
-    NodeFilter.SHOW_ELEMENT,
-  );
+  const elementWalker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   while (elementWalker.nextNode()) {
     allNodes += 1;
     if (allNodes > maxDomNodes) {
@@ -62,10 +59,7 @@ function collectRenderedDomSnapshot(options: {
     }
     for (const attribute of element.attributes) {
       estimatedHtmlCharacters += attribute.name.length + 4;
-      if (
-        estimatedHtmlCharacters > maxHtmlCharacters ||
-        !addEscapedLength(attribute.value, true)
-      ) {
+      if (estimatedHtmlCharacters > maxHtmlCharacters || !addEscapedLength(attribute.value, true)) {
         return { html: "", nodeCount: allNodes, exceeded: true };
       }
     }
@@ -88,10 +82,7 @@ function collectRenderedDomSnapshot(options: {
   const cloneBody = cloneRoot.querySelector("body");
 
   if (originalBody && cloneBody) {
-    const originals: Element[] = [
-      originalBody,
-      ...originalBody.querySelectorAll("*"),
-    ];
+    const originals: Element[] = [originalBody, ...originalBody.querySelectorAll("*")];
     const clones: Element[] = [cloneBody, ...cloneBody.querySelectorAll("*")];
     const count = Math.min(originals.length, clones.length);
     for (let index = 0; index < count; index += 1) {
@@ -129,8 +120,7 @@ function collectRenderedDomSnapshot(options: {
         const summary = Array.from(nearestClosedDetails.children).find(
           (child) => child.tagName.toLowerCase() === "summary",
         );
-        hiddenByClosedDetails =
-          !summary || (original !== summary && !summary.contains(original));
+        hiddenByClosedDetails = !summary || (original !== summary && !summary.contains(original));
       }
       const explicitlyHidden =
         original.hasAttribute("hidden") ||
@@ -174,9 +164,7 @@ function collectRenderedDomSnapshot(options: {
     }
   }
 
-  const doctype = document.doctype
-    ? `<!DOCTYPE ${document.doctype.name}>`
-    : "<!DOCTYPE html>";
+  const doctype = document.doctype ? `<!DOCTYPE ${document.doctype.name}>` : "<!DOCTYPE html>";
   const html = `${doctype}${cloneRoot.outerHTML}`;
   return {
     html: html.length > maxHtmlCharacters ? "" : html,
@@ -185,9 +173,7 @@ function collectRenderedDomSnapshot(options: {
   };
 }
 
-function isBrowserSnapshotResult(
-  value: unknown,
-): value is BrowserSnapshotResult {
+function isBrowserSnapshotResult(value: unknown): value is BrowserSnapshotResult {
   if (!value || typeof value !== "object") return false;
   const result = value as Partial<BrowserSnapshotResult>;
   return (
@@ -214,10 +200,7 @@ export async function renderedDomSnapshot(
     options.maxDomNodes < 1 ||
     options.maxDomNodes > 500_000
   ) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Rendered DOM snapshot limits are invalid.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Rendered DOM snapshot limits are invalid.");
   }
   const evaluationTimeoutMs = options.evaluationTimeoutMs ?? 5_000;
   if (
@@ -239,12 +222,10 @@ export async function renderedDomSnapshot(
       worldName: "llm-fetch-rendered-snapshot",
       grantUniveralAccess: false,
     });
-    const expression = `(${collectRenderedDomSnapshot.toString()})(${JSON.stringify(
-      {
-        maxHtmlCharacters: options.maxHtmlCharacters,
-        maxDomNodes: options.maxDomNodes,
-      },
-    )})`;
+    const expression = `(${collectRenderedDomSnapshot.toString()})(${JSON.stringify({
+      maxHtmlCharacters: options.maxHtmlCharacters,
+      maxDomNodes: options.maxDomNodes,
+    })})`;
     const evaluation = await session.send("Runtime.evaluate", {
       expression,
       contextId: world.executionContextId,
@@ -279,11 +260,9 @@ export async function renderedDomSnapshot(
       );
     }
     if (!snapshot.html) {
-      throw new LlmFetchError(
-        "CONTENT_INSUFFICIENT",
-        "The rendered page had no DOM content.",
-        { url: page.url() },
-      );
+      throw new LlmFetchError("CONTENT_INSUFFICIENT", "The rendered page had no DOM content.", {
+        url: page.url(),
+      });
     }
     return { html: snapshot.html, nodeCount: snapshot.nodeCount };
   } catch (error) {

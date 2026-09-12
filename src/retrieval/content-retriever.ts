@@ -14,10 +14,7 @@ export interface ContentRetrieverInput {
 export interface ContentRetriever {
   readonly name: string;
   isAvailable?(): Promise<boolean>;
-  retrieve(
-    url: string,
-    input?: ContentRetrieverInput,
-  ): Promise<ContentRetrievalResult>;
+  retrieve(url: string, input?: ContentRetrieverInput): Promise<ContentRetrievalResult>;
   close?(): Promise<void>;
 }
 
@@ -26,7 +23,7 @@ export function httpContentRetriever(fetcher: SafeHttpFetcher): ContentRetriever
     name: "http",
     async retrieve(url, input = {}) {
       return {
-        ...await fetcher(url, input),
+        ...(await fetcher(url, input)),
         fetchMethod: "http",
       };
     },

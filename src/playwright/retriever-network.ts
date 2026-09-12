@@ -1,14 +1,8 @@
-import type {
-  CDPSession,
-  Response as PlaywrightResponse,
-} from "playwright-core";
+import type { CDPSession, Response as PlaywrightResponse } from "playwright-core";
 import { LlmFetchError } from "../errors.js";
 import { waitWithSignal } from "../internal/abort-signal.js";
 
-function withOptionalSignal<T>(
-  operation: Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
+function withOptionalSignal<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   return signal ? waitWithSignal(operation, signal) : operation;
 }
 function hasControlCharacters(value: string): boolean {
@@ -23,9 +17,7 @@ function readableContentType(value: string): string {
   return value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
 
-export function responseHeaders(
-  headers: Record<string, string>,
-): Record<string, string> {
+export function responseHeaders(headers: Record<string, string>): Record<string, string> {
   // The browser has already decoded the navigation response and the rendered
   // DOM snapshot is encoded below with TextEncoder. Do not retain the original
   // response charset (or XHTML media type) for these new UTF-8 HTML bytes.
@@ -39,9 +31,7 @@ export function responseHeaders(
   return result;
 }
 
-export function browserRequestHeaders(
-  headers: Record<string, string>,
-): Record<string, string> {
+export function browserRequestHeaders(headers: Record<string, string>): Record<string, string> {
   const result = Object.create(null) as Record<string, string>;
   let count = 0;
   let totalLength = 0;
@@ -72,17 +62,11 @@ function declaredResponseLength(headers: Record<string, string>): number {
   const value = headers["content-length"];
   if (value === undefined) return 0;
   if (!/^\d+$/u.test(value)) {
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      "Browser response content-length is invalid.",
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", "Browser response content-length is invalid.");
   }
   const length = Number(value);
   if (!Number.isSafeInteger(length)) {
-    throw new LlmFetchError(
-      "RESPONSE_TOO_LARGE",
-      "Browser response is too large.",
-    );
+    throw new LlmFetchError("RESPONSE_TOO_LARGE", "Browser response is too large.");
   }
   return length;
 }
@@ -94,23 +78,17 @@ export async function validateNavigationResponse(
 ): Promise<{ status: number; headers: Record<string, string> }> {
   const status = response.status();
   if (status < 200 || status >= 300) {
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      `Browser navigation returned HTTP ${status}.`,
-      {
-        url: response.url(),
-        status,
-        retryable: status === 429 || status >= 500,
-      },
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", `Browser navigation returned HTTP ${status}.`, {
+      url: response.url(),
+      status,
+      retryable: status === 429 || status >= 500,
+    });
   }
   const headers = await withOptionalSignal(response.allHeaders(), signal);
   if (declaredResponseLength(headers) > maxResponseBytes) {
-    throw new LlmFetchError(
-      "RESPONSE_TOO_LARGE",
-      "Browser response is too large.",
-      { url: response.url() },
-    );
+    throw new LlmFetchError("RESPONSE_TOO_LARGE", "Browser response is too large.", {
+      url: response.url(),
+    });
   }
   const contentType = readableContentType(headers["content-type"] ?? "");
   if (contentType !== "text/html" && contentType !== "application/xhtml+xml") {
@@ -141,10 +119,7 @@ export function monitorNetworkBudget(
     if (exceeded) return;
     exceeded = true;
     onExceeded(
-      new LlmFetchError(
-        "UPSTREAM_HTTP",
-        "Chromium reported invalid network accounting data.",
-      ),
+      new LlmFetchError("UPSTREAM_HTTP", "Chromium reported invalid network accounting data."),
     );
   };
   const updateTotal = (requestId: string, decoded: number, encoded: number) => {
@@ -192,18 +167,12 @@ export function monitorNetworkBudget(
     updateTotal(event.requestId, event.dataLength, event.encodedDataLength);
   });
   session.on("Network.loadingFinished", (event) => {
-    if (
-      !Number.isFinite(event.encodedDataLength) ||
-      event.encodedDataLength < 0
-    ) {
+    if (!Number.isFinite(event.encodedDataLength) || event.encodedDataLength < 0) {
       failAccounting();
       return;
     }
     const entry = requests.get(event.requestId);
-    const encodedDelta = Math.max(
-      0,
-      event.encodedDataLength - (entry?.encoded ?? 0),
-    );
+    const encodedDelta = Math.max(0, event.encodedDataLength - (entry?.encoded ?? 0));
     updateTotal(event.requestId, 0, encodedDelta);
     requests.delete(event.requestId);
   });

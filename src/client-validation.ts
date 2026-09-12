@@ -64,11 +64,7 @@ export function integerInRange(
   minimum: number,
   maximum: number,
 ): number {
-  if (
-    !Number.isInteger(value) ||
-    (value as number) < minimum ||
-    (value as number) > maximum
-  ) {
+  if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
     throw new LlmFetchError(
       "INVALID_INPUT",
       `${name} must be an integer between ${minimum} and ${maximum}.`,
@@ -87,10 +83,7 @@ export function optionalRequestedUse(value: unknown): ReadInput["requestedUse"] 
 
 export function normalizeSearchInput(input: SearchInput): SearchInput {
   if (!input || typeof input !== "object" || typeof input.query !== "string") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Search input and query are required.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Search input and query are required.");
   }
   const query = input.query.trim();
   if (!query || query.length > 400) {
@@ -102,8 +95,7 @@ export function normalizeSearchInput(input: SearchInput): SearchInput {
   const limit = integerInRange(input.limit ?? 10, "limit", 1, 20);
   if (
     input.safeSearch !== undefined &&
-    (typeof input.safeSearch !== "string" ||
-      !SAFE_SEARCH_VALUES.has(input.safeSearch))
+    (typeof input.safeSearch !== "string" || !SAFE_SEARCH_VALUES.has(input.safeSearch))
   ) {
     throw new LlmFetchError("INVALID_INPUT", "safeSearch is invalid.");
   }
@@ -127,35 +119,20 @@ export function normalizeSearchInput(input: SearchInput): SearchInput {
   }
   let language: string | undefined;
   if (input.language !== undefined) {
-    if (
-      typeof input.language !== "string" ||
-      !/^[a-z]{2}$/iu.test(input.language)
-    ) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "language must be an ISO 639-1 two-letter code.",
-      );
+    if (typeof input.language !== "string" || !/^[a-z]{2}$/iu.test(input.language)) {
+      throw new LlmFetchError("INVALID_INPUT", "language must be an ISO 639-1 two-letter code.");
     }
     language = input.language.toLowerCase();
   }
   let region: string | undefined;
   if (input.region !== undefined) {
-    if (
-      typeof input.region !== "string" ||
-      !/^[a-z]{2}$/iu.test(input.region)
-    ) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "region must be an ISO 3166-1 alpha-2 code.",
-      );
+    if (typeof input.region !== "string" || !/^[a-z]{2}$/iu.test(input.region)) {
+      throw new LlmFetchError("INVALID_INPUT", "region must be an ISO 3166-1 alpha-2 code.");
     }
     region = input.region.toUpperCase();
   }
   if (locale !== undefined && (language !== undefined || region !== undefined)) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "locale cannot be combined with language or region.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "locale cannot be combined with language or region.");
   }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.");
@@ -172,29 +149,18 @@ export function normalizeSearchInput(input: SearchInput): SearchInput {
 
 export function normalizeReadInput(input: ReadInput): ReadInput {
   if (!input || typeof input !== "object" || typeof input.url !== "string") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Read input and URL are required.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Read input and URL are required.");
   }
   const url = input.url.trim();
   if (!url || url.length > 2_048) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "URL must contain between 1 and 2048 characters.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "URL must contain between 1 and 2048 characters.");
   }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.");
   }
   const normalized: ReadInput = { url };
   if (input.maxCharacters !== undefined) {
-    normalized.maxCharacters = integerInRange(
-      input.maxCharacters,
-      "maxCharacters",
-      200,
-      100_000,
-    );
+    normalized.maxCharacters = integerInRange(input.maxCharacters, "maxCharacters", 200, 100_000);
   }
   if (
     input.render !== undefined &&
@@ -243,38 +209,27 @@ export function normalizeReadInput(input: ReadInput): ReadInput {
   return normalized;
 }
 
-export function normalizeSearchHits(
-  value: unknown,
-  provider: string,
-  limit: number,
-): SearchHit[] {
+export function normalizeSearchHits(value: unknown, provider: string, limit: number): SearchHit[] {
   if (!Array.isArray(value)) {
-    throw new LlmFetchError(
-      "PARSE_CHANGED",
-      "Search provider returned a non-array result.",
-      { provider },
-    );
+    throw new LlmFetchError("PARSE_CHANGED", "Search provider returned a non-array result.", {
+      provider,
+    });
   }
   const hits: SearchHit[] = [];
   const seen = new Set<string>();
   if (value.length > 1_000) {
-    throw new LlmFetchError(
-      "PARSE_CHANGED",
-      "Search provider returned too many results.",
-      { provider },
-    );
+    throw new LlmFetchError("PARSE_CHANGED", "Search provider returned too many results.", {
+      provider,
+    });
   }
   for (const item of value) {
     if (!item || typeof item !== "object") {
-      throw new LlmFetchError(
-        "PARSE_CHANGED",
-        "Search provider returned an invalid result.",
-        { provider },
-      );
+      throw new LlmFetchError("PARSE_CHANGED", "Search provider returned an invalid result.", {
+        provider,
+      });
     }
     const hit = item as Partial<SearchHit>;
-    const normalizedUrl =
-      typeof hit.url === "string" ? normalizeResultUrl(hit.url) : null;
+    const normalizedUrl = typeof hit.url === "string" ? normalizeResultUrl(hit.url) : null;
     if (
       typeof hit.provider !== "string" ||
       !hit.provider.trim() ||
@@ -292,11 +247,9 @@ export function normalizeSearchHits(
       (hit.displayUrl !== undefined &&
         (typeof hit.displayUrl !== "string" || hit.displayUrl.length > 2_048))
     ) {
-      throw new LlmFetchError(
-        "PARSE_CHANGED",
-        "Search provider returned an invalid result.",
-        { provider },
-      );
+      throw new LlmFetchError("PARSE_CHANGED", "Search provider returned an invalid result.", {
+        provider,
+      });
     }
     if (seen.has(normalizedUrl)) continue;
     seen.add(normalizedUrl);
@@ -310,11 +263,9 @@ export function normalizeSearchHits(
       snippet: normalizeExternalText(hit.snippet),
     };
     if (!normalizedHit.provider || !normalizedHit.title) {
-      throw new LlmFetchError(
-        "PARSE_CHANGED",
-        "Search provider returned an invalid result.",
-        { provider },
-      );
+      throw new LlmFetchError("PARSE_CHANGED", "Search provider returned an invalid result.", {
+        provider,
+      });
     }
     if (hit.displayUrl !== undefined && hit.displayUrl.trim()) {
       const displayUrl = normalizeExternalText(hit.displayUrl);
@@ -326,11 +277,7 @@ export function normalizeSearchHits(
   return hits;
 }
 
-export function validateNonNegativeInteger(
-  value: number,
-  name: string,
-  maximum: number,
-): number {
+export function validateNonNegativeInteger(value: number, name: string, maximum: number): number {
   if (!Number.isInteger(value) || value < 0 || value > maximum) {
     throw new LlmFetchError(
       "INVALID_INPUT",
@@ -344,11 +291,7 @@ export function isTimeoutReason(value: unknown): boolean {
   return value instanceof DOMException && value.name === "TimeoutError";
 }
 
-export function timeoutError(
-  message: string,
-  url?: string,
-  cause?: unknown,
-): LlmFetchError {
+export function timeoutError(message: string, url?: string, cause?: unknown): LlmFetchError {
   return new LlmFetchError("TIMEOUT", message, {
     ...(url === undefined ? {} : { url }),
     retryable: true,
@@ -356,37 +299,25 @@ export function timeoutError(
   });
 }
 
-export function validateFetchResult(
-  value: unknown,
-  requestedUrl: string,
-): ContentRetrievalResult {
+export function validateFetchResult(value: unknown, requestedUrl: string): ContentRetrievalResult {
   if (!value || typeof value !== "object") {
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      "Fetcher returned an invalid response.",
-      { url: requestedUrl },
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", "Fetcher returned an invalid response.", {
+      url: requestedUrl,
+    });
   }
   const result = value as Partial<ContentRetrievalResult>;
-  const resultRequestedUrl =
-    typeof result.requestedUrl === "string" ? result.requestedUrl : "";
-  const normalizedRequestedUrl = resultRequestedUrl
-    ? normalizeResultUrl(resultRequestedUrl)
-    : null;
+  const resultRequestedUrl = typeof result.requestedUrl === "string" ? result.requestedUrl : "";
+  const normalizedRequestedUrl = resultRequestedUrl ? normalizeResultUrl(resultRequestedUrl) : null;
   const expectedRequestedUrl = normalizeResultUrl(requestedUrl);
   const finalUrl = typeof result.finalUrl === "string" ? result.finalUrl : "";
   const normalizedFinalUrl = finalUrl ? normalizeResultUrl(finalUrl) : null;
-  const parsedFinalUrl = normalizedFinalUrl
-    ? new URL(normalizedFinalUrl)
-    : undefined;
+  const parsedFinalUrl = normalizedFinalUrl ? new URL(normalizedFinalUrl) : undefined;
   const finalHostname = parsedFinalUrl?.hostname
     .toLowerCase()
     .replace(/^\[|\]$/gu, "")
     .replace(/\.$/u, "");
   const contentType =
-    typeof result.contentType === "string"
-      ? result.contentType.trim().toLowerCase()
-      : "";
+    typeof result.contentType === "string" ? result.contentType.trim().toLowerCase() : "";
   if (
     !normalizedRequestedUrl ||
     normalizedRequestedUrl !== expectedRequestedUrl ||
@@ -414,33 +345,26 @@ export function validateFetchResult(
     typeof result.headers !== "object" ||
     Array.isArray(result.headers)
   ) {
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      "Fetcher returned an invalid response.",
-      { url: requestedUrl },
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", "Fetcher returned an invalid response.", {
+      url: requestedUrl,
+    });
   }
   if (
     result.limitations !== undefined &&
     (!Array.isArray(result.limitations) ||
       result.limitations.length > 100 ||
-      result.limitations.some(
-        (item) => typeof item !== "string" || item.length > 1_000,
-      ))
+      result.limitations.some((item) => typeof item !== "string" || item.length > 1_000))
   ) {
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      "Fetcher returned invalid limitations.",
-      { url: requestedUrl },
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", "Fetcher returned invalid limitations.", {
+      url: requestedUrl,
+    });
   }
   const headers = Object.create(null) as Record<string, string>;
   let headerCount = 0;
   let headerLength = 0;
   for (const [name, headerValue] of Object.entries(result.headers)) {
     headerCount += 1;
-    headerLength +=
-      name.length + (typeof headerValue === "string" ? headerValue.length : 0);
+    headerLength += name.length + (typeof headerValue === "string" ? headerValue.length : 0);
     if (
       typeof headerValue !== "string" ||
       headerCount > 100 ||
@@ -452,19 +376,14 @@ export function validateFetchResult(
       /[\r\n]/u.test(headerValue) ||
       Object.hasOwn(headers, name.toLowerCase())
     ) {
-      throw new LlmFetchError(
-        "UPSTREAM_HTTP",
-        "Fetcher returned invalid headers.",
-        { url: requestedUrl },
-      );
+      throw new LlmFetchError("UPSTREAM_HTTP", "Fetcher returned invalid headers.", {
+        url: requestedUrl,
+      });
     }
     headers[name.toLowerCase()] = headerValue;
   }
   const headerContentType = headers["content-type"];
-  const headerMediaType = headerContentType
-    ?.split(";", 1)[0]
-    ?.trim()
-    .toLowerCase();
+  const headerMediaType = headerContentType?.split(";", 1)[0]?.trim().toLowerCase();
   if (headerContentType !== undefined && headerMediaType !== contentType) {
     throw new LlmFetchError(
       "UPSTREAM_HTTP",
@@ -487,8 +406,6 @@ export function validateFetchResult(
     body: result.body,
     headers,
     fetchMethod: result.fetchMethod,
-    ...(result.limitations === undefined
-      ? {}
-      : { limitations: [...result.limitations] }),
+    ...(result.limitations === undefined ? {} : { limitations: [...result.limitations] }),
   };
 }

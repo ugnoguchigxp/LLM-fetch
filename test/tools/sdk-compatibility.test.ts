@@ -7,13 +7,17 @@ import { createLlmFetch } from "../../src/index.js";
 describe("SDK tool definition compatibility", () => {
   it("assigns definitions to OpenAI Responses, Chat Completions, and Bedrock SDK types", () => {
     const toolset = createLlmFetch({
-      search: { name: "fixture", async search() { return []; } },
+      search: {
+        name: "fixture",
+        async search() {
+          return [];
+        },
+      },
       fetcher: vi.fn(),
     }).toolset();
 
     const responses: ResponsesTool[] = toolset.openaiResponsesDefinitions();
-    const chat: ChatCompletionTool[] =
-      toolset.openaiChatCompletionsDefinitions();
+    const chat: ChatCompletionTool[] = toolset.openaiChatCompletionsDefinitions();
     const bedrock: BedrockTool[] = toolset.bedrockDefinitions();
 
     expect(responses).toHaveLength(2);

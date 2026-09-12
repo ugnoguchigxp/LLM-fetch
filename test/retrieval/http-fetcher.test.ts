@@ -29,11 +29,7 @@ beforeEach(() => {
   queue.length = 0;
   mocks.request.mockReset();
   mocks.request.mockImplementation(
-    (
-      _url: URL,
-      _options: RequestOptions,
-      callback: (response: IncomingMessage) => void,
-    ) => {
+    (_url: URL, _options: RequestOptions, callback: (response: IncomingMessage) => void) => {
       const config = queue.shift();
       if (!config) throw new Error("No mock response queued");
       const request = new EventEmitter() as ClientRequest;
@@ -91,9 +87,7 @@ describe("safe HTTP fetcher", () => {
 
     const allCallback = vi.fn();
     lookup("example.com", { all: true }, allCallback);
-    expect(allCallback).toHaveBeenCalledWith(null, [
-      { address: "93.184.216.34", family: 4 },
-    ]);
+    expect(allCallback).toHaveBeenCalledWith(null, [{ address: "93.184.216.34", family: 4 }]);
   });
 
   it("prefers a validated IPv4 answer when IPv6 is returned first", async () => {
@@ -162,9 +156,9 @@ describe("safe HTTP fetcher", () => {
         "content-length": "9".repeat(400),
       },
     });
-    await expect(createSafeHttpFetcher({ resolver })(
-      "https://example.com/declared",
-    )).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
+    await expect(
+      createSafeHttpFetcher({ resolver })("https://example.com/declared"),
+    ).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
   });
 
   it("rejects unsupported content types without exposing the body", async () => {
@@ -213,15 +207,17 @@ describe("safe HTTP fetcher", () => {
     expect(() => createSafeHttpFetcher({ allowedContentTypes: [] })).toThrowError(
       expect.objectContaining({ code: "INVALID_INPUT" }),
     );
-    expect(() => createSafeHttpFetcher({
-      allowedContentTypes: "text/html" as never,
-    })).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+    expect(() =>
+      createSafeHttpFetcher({
+        allowedContentTypes: "text/html" as never,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
     expect(() => createSafeHttpFetcher({ userAgent: "bad\nagent" })).toThrowError(
       expect.objectContaining({ code: "INVALID_INPUT" }),
     );
-    expect(() =>
-      createSafeHttpFetcher({ userAgent: 123 as never }),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+    expect(() => createSafeHttpFetcher({ userAgent: 123 as never })).toThrowError(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
   });
 
   it("does not resolve or request an already aborted operation", async () => {
@@ -229,9 +225,11 @@ describe("safe HTTP fetcher", () => {
     const fetcher = createSafeHttpFetcher({ resolver: addressResolver });
     const controller = new AbortController();
     controller.abort();
-    await expect(fetcher("https://example.com/", {
-      signal: controller.signal,
-    })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(
+      fetcher("https://example.com/", {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
     expect(addressResolver).not.toHaveBeenCalled();
     expect(mocks.request).not.toHaveBeenCalled();
   });

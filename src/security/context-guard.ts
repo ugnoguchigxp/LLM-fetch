@@ -9,10 +9,7 @@ import type {
 import { LlmFetchError } from "../errors.js";
 import { isAbortSignal } from "../internal/abort-signal.js";
 import { decodeBody, loadHtml } from "../retrieval/extract-content.js";
-import {
-  prepareHtmlForExtraction,
-  type ContentSegment,
-} from "./html-segments.js";
+import { prepareHtmlForExtraction, type ContentSegment } from "./html-segments.js";
 import { decideContextPolicy } from "./policy.js";
 import { scanSegments } from "./rules.js";
 
@@ -42,19 +39,11 @@ export interface BuiltinContextGuard {
 }
 
 export interface InternalBuiltinContextGuard extends BuiltinContextGuard {
-  prepareHtml(
-    $: CheerioAPI,
-    rawHtml: string,
-  ): ReturnType<typeof prepareHtmlForExtraction>;
+  prepareHtml($: CheerioAPI, rawHtml: string): ReturnType<typeof prepareHtmlForExtraction>;
   inspectPrepared(input: PreparedGuardInput): GuardResult;
 }
 
-const GUARD_DECISIONS = new Set([
-  "allow",
-  "allow_with_warning",
-  "require_approval",
-  "deny",
-]);
+const GUARD_DECISIONS = new Set(["allow", "allow_with_warning", "require_approval", "deny"]);
 const ASSURANCE_LEVELS = new Set(["unassessed", "low", "medium", "high"]);
 const FINDING_CATEGORIES = new Set([
   "instruction_override",
@@ -71,13 +60,7 @@ const FINDING_CATEGORIES = new Set([
   "low_trust_attribute",
   "benign_mention",
 ]);
-const FINDING_SEVERITIES = new Set([
-  "info",
-  "low",
-  "medium",
-  "high",
-  "critical",
-]);
+const FINDING_SEVERITIES = new Set(["info", "low", "medium", "high", "critical"]);
 const FINDING_LOCATIONS = new Set([
   "visible",
   "hidden",
@@ -102,9 +85,7 @@ function validStringArray(
   return (
     Array.isArray(value) &&
     value.length <= maximumItems &&
-    value.every(
-      (item) => typeof item === "string" && item.length <= maximumCharacters,
-    )
+    value.every((item) => typeof item === "string" && item.length <= maximumCharacters)
   );
 }
 
@@ -132,10 +113,7 @@ function validFinding(value: unknown): value is SecurityFinding {
 
 function validateGuardResult(value: unknown): GuardResult {
   if (!value || typeof value !== "object") {
-    throw new LlmFetchError(
-      "GUARD_FAILED",
-      "Content guard returned an invalid result.",
-    );
+    throw new LlmFetchError("GUARD_FAILED", "Content guard returned an invalid result.");
   }
   const result = value as Partial<GuardResult>;
   if (
@@ -149,10 +127,7 @@ function validateGuardResult(value: unknown): GuardResult {
     !validStringArray(result.reasons, 32, 1_000) ||
     !validStringArray(result.limitations, 32, 1_000)
   ) {
-    throw new LlmFetchError(
-      "GUARD_FAILED",
-      "Content guard returned an invalid result.",
-    );
+    throw new LlmFetchError("GUARD_FAILED", "Content guard returned an invalid result.");
   }
   return {
     findings: result.findings.map((finding) => ({
@@ -179,35 +154,21 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
 
   constructor(options: BuiltinContextGuardOptions = {}) {
     if (!options || typeof options !== "object" || Array.isArray(options)) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "Context Guard options must be an object.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "Context Guard options must be an object.");
     }
     const profile = options.profile ?? "balanced";
     const maxSegments = options.maxSegments ?? 128;
     const maxCharacters = options.maxCharacters ?? 250_000;
     if (profile !== "balanced" && profile !== "strict") {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "Context Guard profile is invalid.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "Context Guard profile is invalid.");
     }
-    if (
-      !Number.isInteger(maxSegments) ||
-      maxSegments < 1 ||
-      maxSegments > 4_096
-    ) {
+    if (!Number.isInteger(maxSegments) || maxSegments < 1 || maxSegments > 4_096) {
       throw new LlmFetchError(
         "INVALID_INPUT",
         "Context Guard maxSegments must be an integer between 1 and 4096.",
       );
     }
-    if (
-      !Number.isInteger(maxCharacters) ||
-      maxCharacters < 1 ||
-      maxCharacters > 2_000_000
-    ) {
+    if (!Number.isInteger(maxCharacters) || maxCharacters < 1 || maxCharacters > 2_000_000) {
       throw new LlmFetchError(
         "INVALID_INPUT",
         "Context Guard maxCharacters must be an integer between 1 and 2000000.",
@@ -244,10 +205,7 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       findings: scanned.findings,
       requestedUse: input.requestedUse,
       truncated: scanned.truncated || input.truncated === true,
-      truncationReasons: [
-        ...scanned.truncationReasons,
-        ...(input.truncationReasons ?? []),
-      ],
+      truncationReasons: [...scanned.truncationReasons, ...(input.truncationReasons ?? [])],
     });
   }
 
@@ -269,29 +227,17 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       !input.source ||
       typeof input.source !== "object"
     ) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "Context Guard input is invalid.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "Context Guard input is invalid.");
     }
     if (input.signal !== undefined && !isAbortSignal(input.signal)) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "signal must be an AbortSignal.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.");
     }
     try {
       input.signal?.throwIfAborted();
       const text = decodeBody(input.rawBody, input.contentType);
       input.signal?.throwIfAborted();
-      const contentType = input.contentType
-        .split(";", 1)[0]
-        ?.trim()
-        .toLowerCase();
-      if (
-        contentType === "text/html" ||
-        contentType === "application/xhtml+xml"
-      ) {
+      const contentType = input.contentType.split(";", 1)[0]?.trim().toLowerCase();
+      if (contentType === "text/html" || contentType === "application/xhtml+xml") {
         const $ = loadHtml(text);
         input.signal?.throwIfAborted();
         const prepared = this.prepareHtml($, text);

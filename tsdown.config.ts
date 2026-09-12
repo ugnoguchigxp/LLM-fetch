@@ -1,5 +1,5 @@
-import { defineConfig } from "tsup";
 import { readFileSync } from "node:fs";
+import { defineConfig } from "tsdown";
 
 const packageVersion = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
@@ -15,14 +15,15 @@ export default defineConfig({
   sourcemap: true,
   minify: true,
   clean: true,
-  splitting: false,
   treeshake: true,
   target: "node20",
-  external: ["playwright-core"],
+  deps: {
+    neverBundle: ["playwright-core"],
+  },
   define: {
     __LLM_FETCH_VERSION__: JSON.stringify(packageVersion),
   },
-  outExtension({ format }) {
+  outExtensions({ format }) {
     return { js: format === "cjs" ? ".cjs" : ".js" };
   },
 });

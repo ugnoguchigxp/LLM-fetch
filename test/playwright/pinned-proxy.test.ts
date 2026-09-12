@@ -15,10 +15,7 @@ afterEach(async () => {
   setPinnedProxyHttpRequestForTesting();
 });
 
-function connectRequest(
-  server: string,
-  request: string,
-): Promise<string> {
+function connectRequest(server: string, request: string): Promise<string> {
   const url = new URL(server);
   return new Promise((resolve, reject) => {
     const socket = net.connect(Number(url.port), url.hostname);
@@ -43,10 +40,7 @@ describe("Playwright pinned proxy", () => {
       throw new Error("Upstream fixture did not expose a TCP address.");
     }
     setPinnedProxyHttpRequestForTesting((options, callback) =>
-      http.request(
-        { ...options, host: "127.0.0.1", port: upstreamAddress.port },
-        callback,
-      ),
+      http.request({ ...options, host: "127.0.0.1", port: upstreamAddress.port }, callback),
     );
     const proxy = await createPinnedProxy({
       connectTimeoutMs: 1_000,
@@ -131,10 +125,12 @@ describe("Playwright pinned proxy", () => {
   });
 
   it("validates resource limits before starting a proxy", async () => {
-    await expect(createPinnedProxy({
-      connectTimeoutMs: 0,
-      maxResponseBytes: 1_000_000,
-    })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      createPinnedProxy({
+        connectTimeoutMs: 0,
+        maxResponseBytes: 1_000_000,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 
   it("bounds a resolver that does not settle", async () => {

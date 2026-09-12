@@ -42,34 +42,23 @@ describe("Brave provider", () => {
         snippet: "Result description",
       },
     ]);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
-      URL,
-      RequestInit,
-    ];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
     expect(url.searchParams.get("count")).toBe("3");
     expect(url.searchParams.get("search_lang")).toBe("ja-JP");
     expect(url.searchParams.get("freshness")).toBe("pw");
-    expect(new Headers(init.headers).get("x-subscription-token")).toBe(
-      "test-key",
-    );
+    expect(new Headers(init.headers).get("x-subscription-token")).toBe("test-key");
   });
 
   it("returns typed upstream errors without leaking the API key", async () => {
-    const fetchMock = vi.fn(
-      async () => new Response("limited", { status: 429 }),
-    );
+    const fetchMock = vi.fn(async () => new Response("limited", { status: 429 }));
     const provider = brave({
       apiKey: "super-secret-key",
       fetch: fetchMock as unknown as typeof fetch,
     });
-    const error = await provider
-      .search({ query: "test" })
-      .catch((cause: unknown) => cause);
+    const error = await provider.search({ query: "test" }).catch((cause: unknown) => cause);
     expect(error).toMatchObject({ code: "RATE_LIMITED", retryable: true });
     expect(String(error)).not.toContain("super-secret-key");
-    await expect(
-      provider.search({ query: "test again" }),
-    ).rejects.toMatchObject({
+    await expect(provider.search({ query: "test again" })).rejects.toMatchObject({
       code: "RATE_LIMITED",
       cooldownMs: expect.any(Number),
     });
@@ -89,11 +78,12 @@ describe("Brave provider", () => {
 
     const limited = brave({
       apiKey: "test",
-      fetch: vi.fn(async () =>
-        new Response("limited", {
-          status: 429,
-          headers: { "retry-after": "999999" },
-        }),
+      fetch: vi.fn(
+        async () =>
+          new Response("limited", {
+            status: 429,
+            headers: { "retry-after": "999999" },
+          }),
       ) as unknown as typeof fetch,
     });
     await expect(limited.search({ query: "limited" })).rejects.toMatchObject({
@@ -134,9 +124,7 @@ describe("Brave provider", () => {
   it("reports an unexpected successful response shape", async () => {
     const provider = brave({
       apiKey: "test",
-      fetch: vi.fn(async () =>
-        Response.json({ changed: true }),
-      ) as unknown as typeof fetch,
+      fetch: vi.fn(async () => Response.json({ changed: true })) as unknown as typeof fetch,
     });
     await expect(provider.search({ query: "test" })).rejects.toMatchObject({
       code: "PARSE_CHANGED",
@@ -169,9 +157,7 @@ describe("Brave provider", () => {
     const provider = brave({
       apiKey: "test",
       timeoutMs: 5,
-      fetch: vi.fn(
-        () => new Promise<Response>(() => undefined),
-      ) as unknown as typeof fetch,
+      fetch: vi.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch,
     });
 
     await expect(provider.search({ query: "timeout" })).rejects.toMatchObject({
@@ -204,9 +190,9 @@ describe("fallback provider", () => {
         ];
       },
     };
-    await expect(
-      fallbackSearch([first, second]).search({ query: "test" }),
-    ).resolves.toHaveLength(1);
+    await expect(fallbackSearch([first, second]).search({ query: "test" })).resolves.toHaveLength(
+      1,
+    );
   });
 
   it("does not fall back for empty results or non-retryable errors", async () => {
@@ -220,9 +206,7 @@ describe("fallback provider", () => {
       name: "unused",
       search: vi.fn(async () => []),
     } satisfies SearchProvider;
-    await expect(
-      fallbackSearch([empty, unused]).search({ query: "test" }),
-    ).resolves.toEqual([]);
+    await expect(fallbackSearch([empty, unused]).search({ query: "test" })).resolves.toEqual([]);
     expect(unused.search).not.toHaveBeenCalled();
 
     const invalid: SearchProvider = {
@@ -231,11 +215,11 @@ describe("fallback provider", () => {
         throw new LlmFetchError("INVALID_INPUT", "bad input");
       },
     };
-    await expect(
-      fallbackSearch([invalid, unused]).search({ query: "test" }),
-    ).rejects.toMatchObject({
-      code: "INVALID_INPUT",
-    });
+    await expect(fallbackSearch([invalid, unused]).search({ query: "test" })).rejects.toMatchObject(
+      {
+        code: "INVALID_INPUT",
+      },
+    );
     expect(unused.search).not.toHaveBeenCalled();
   });
 

@@ -46,13 +46,10 @@ type ProxyHttpRequest = (
   callback: (response: IncomingMessage) => void,
 ) => ClientRequest;
 
-let proxyHttpRequest: ProxyHttpRequest = (options, callback) =>
-  http.request(options, callback);
+let proxyHttpRequest: ProxyHttpRequest = (options, callback) => http.request(options, callback);
 
 /** Internal test seam; not exported by the package subpath. */
-export function setPinnedProxyHttpRequestForTesting(
-  request?: ProxyHttpRequest,
-): void {
+export function setPinnedProxyHttpRequestForTesting(request?: ProxyHttpRequest): void {
   proxyHttpRequest = request ?? ((options, callback) => http.request(options, callback));
 }
 
@@ -63,15 +60,10 @@ function proxyAuthorization(username: string, password: string): string {
 function constantTimeEqual(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
-  return (
-    leftBuffer.length === rightBuffer.length &&
-    timingSafeEqual(leftBuffer, rightBuffer)
-  );
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function publicHeaders(
-  headers: IncomingHttpHeaders,
-): Record<string, string | string[]> {
+function publicHeaders(headers: IncomingHttpHeaders): Record<string, string | string[]> {
   const connectionTokens = String(headers.connection ?? "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -85,26 +77,16 @@ function publicHeaders(
     if (blocked.has(name) || rawValue === undefined) continue;
     count += 1;
     const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-    totalLength +=
-      name.length + values.reduce((total, value) => total + value.length, 0);
-    if (
-      count > 100 ||
-      totalLength > 64 * 1024 ||
-      values.some((value) => value.length > 16_384)
-    ) {
-      throw new LlmFetchError(
-        "UPSTREAM_HTTP",
-        "Proxy headers exceeded the safety limit.",
-      );
+    totalLength += name.length + values.reduce((total, value) => total + value.length, 0);
+    if (count > 100 || totalLength > 64 * 1024 || values.some((value) => value.length > 16_384)) {
+      throw new LlmFetchError("UPSTREAM_HTTP", "Proxy headers exceeded the safety limit.");
     }
     result[name] = Array.isArray(rawValue) ? [...rawValue] : rawValue;
   }
   return result;
 }
 
-function sendProxyAuthenticationRequired(
-  response: ServerResponse | Socket,
-): void {
+function sendProxyAuthenticationRequired(response: ServerResponse | Socket): void {
   if ("writeHead" in response) {
     response.writeHead(407, {
       "proxy-authenticate": 'Basic realm="llm-fetch"',
@@ -119,16 +101,8 @@ function sendProxyAuthenticationRequired(
   );
 }
 
-function sendSocketError(
-  socket: Socket | Duplex,
-  status: 400 | 403 | 502,
-): void {
-  const message =
-    status === 403
-      ? "Forbidden"
-      : status === 502
-        ? "Bad Gateway"
-        : "Bad Request";
+function sendSocketError(socket: Socket | Duplex, status: 400 | 403 | 502): void {
+  const message = status === 403 ? "Forbidden" : status === 502 ? "Bad Gateway" : "Bad Request";
   socket.end(`HTTP/1.1 ${status} ${message}\r\nConnection: close\r\n\r\n`);
 }
 
@@ -139,29 +113,18 @@ function requestPath(url: URL): string {
 function firstAddress(addresses: readonly ResolvedAddress[]): ResolvedAddress {
   const address = addresses.find((entry) => entry.family === 4) ?? addresses[0];
   if (!address) {
-    throw new LlmFetchError(
-      "UNSAFE_URL",
-      "The proxy target resolved to no addresses.",
-    );
+    throw new LlmFetchError("UNSAFE_URL", "The proxy target resolved to no addresses.");
   }
   return address;
 }
 
-export async function createPinnedProxy(
-  options: PinnedProxyOptions,
-): Promise<PinnedProxy> {
+export async function createPinnedProxy(options: PinnedProxyOptions): Promise<PinnedProxy> {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Pinned proxy options must be an object.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Pinned proxy options must be an object.");
   }
   const resolver = options.resolver ?? defaultAddressResolver;
   if (typeof resolver !== "function") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Pinned proxy resolver must be a function.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Pinned proxy resolver must be a function.");
   }
   if (
     !Number.isInteger(options.connectTimeoutMs) ||
@@ -191,10 +154,7 @@ export async function createPinnedProxy(
 
   const isAuthorized = (headers: IncomingHttpHeaders) => {
     const actual = headers["proxy-authorization"];
-    return (
-      typeof actual === "string" &&
-      constantTimeEqual(actual, expectedAuthorization)
-    );
+    return typeof actual === "string" && constantTimeEqual(actual, expectedAuthorization);
   };
 
   const trackSocket = (socket: Socket) => {
@@ -300,96 +260,84 @@ export async function createPinnedProxy(
       upstream.on("socket", trackSocket);
       upstream.setTimeout(options.connectTimeoutMs, () => upstream.destroy());
       upstream.once("error", () => {
-        if (!response.headersSent)
-          response.writeHead(502, { connection: "close" });
+        if (!response.headersSent) response.writeHead(502, { connection: "close" });
         response.end();
       });
       upstream.end();
     })().catch((error: unknown) => {
-      const status =
-        error instanceof LlmFetchError && error.code === "UNSAFE_URL"
-          ? 403
-          : 502;
-      if (!response.headersSent)
-        response.writeHead(status, { connection: "close" });
+      const status = error instanceof LlmFetchError && error.code === "UNSAFE_URL" ? 403 : 502;
+      if (!response.headersSent) response.writeHead(status, { connection: "close" });
       response.end();
     });
   });
 
   server.on("connection", trackSocket);
-  server.on(
-    "connect",
-    (request: IncomingMessage, clientSocket: Socket, head: Buffer) => {
-      void (async () => {
-        if (!isAuthorized(request.headers)) {
-          sendProxyAuthenticationRequired(clientSocket);
-          return;
+  server.on("connect", (request: IncomingMessage, clientSocket: Socket, head: Buffer) => {
+    void (async () => {
+      if (!isAuthorized(request.headers)) {
+        sendProxyAuthenticationRequired(clientSocket);
+        return;
+      }
+      const authority = request.url ?? "";
+      if (!authority || /[@/?#]/u.test(authority)) {
+        sendSocketError(clientSocket, 400);
+        return;
+      }
+      let target: URL;
+      try {
+        target = new URL(`https://${authority}/`);
+      } catch {
+        sendSocketError(clientSocket, 400);
+        return;
+      }
+      const resolved = await waitWithSignal(
+        resolveSafeOutboundUrl(target.toString(), resolver),
+        AbortSignal.timeout(options.connectTimeoutMs),
+      );
+      if (clientSocket.destroyed) return;
+      const pinnedAddress = firstAddress(resolved.addresses);
+      const upstreamSocket = trackSocket(
+        net.connect({
+          host: pinnedAddress.address,
+          family: pinnedAddress.family,
+          port: 443,
+        }),
+      );
+      let receivedBytes = 0;
+      let sentBytes = head.length;
+      upstreamSocket.setTimeout(options.connectTimeoutMs, () => upstreamSocket.destroy());
+      upstreamSocket.on("data", (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > options.maxResponseBytes) {
+          upstreamSocket.destroy();
+          clientSocket.destroy();
         }
-        const authority = request.url ?? "";
-        if (!authority || /[@/?#]/u.test(authority)) {
-          sendSocketError(clientSocket, 400);
-          return;
-        }
-        let target: URL;
-        try {
-          target = new URL(`https://${authority}/`);
-        } catch {
-          sendSocketError(clientSocket, 400);
-          return;
-        }
-        const resolved = await waitWithSignal(
-          resolveSafeOutboundUrl(target.toString(), resolver),
-          AbortSignal.timeout(options.connectTimeoutMs),
-        );
-        if (clientSocket.destroyed) return;
-        const pinnedAddress = firstAddress(resolved.addresses);
-        const upstreamSocket = trackSocket(
-          net.connect({
-            host: pinnedAddress.address,
-            family: pinnedAddress.family,
-            port: 443,
-          }),
-        );
-        let receivedBytes = 0;
-        let sentBytes = head.length;
-        upstreamSocket.setTimeout(options.connectTimeoutMs, () =>
-          upstreamSocket.destroy(),
-        );
-        upstreamSocket.on("data", (chunk: Buffer) => {
-          receivedBytes += chunk.length;
-          if (receivedBytes > options.maxResponseBytes) {
-            upstreamSocket.destroy();
-            clientSocket.destroy();
-          }
-        });
-        clientSocket.on("data", (chunk: Buffer) => {
-          sentBytes += chunk.length;
-          if (sentBytes > 512 * 1024) {
-            upstreamSocket.destroy();
-            clientSocket.destroy();
-          }
-        });
-        upstreamSocket.once("connect", () => {
-          clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-          if (head.length > 0) upstreamSocket.write(head);
-          clientSocket.pipe(upstreamSocket);
-          upstreamSocket.pipe(clientSocket);
-        });
-        upstreamSocket.once("error", () => {
-          if (!clientSocket.destroyed) sendSocketError(clientSocket, 502);
-        });
-        clientSocket.once("error", () => upstreamSocket.destroy());
-        clientSocket.once("close", () => upstreamSocket.destroy());
-      })().catch((error: unknown) => {
-        sendSocketError(
-          clientSocket,
-          error instanceof LlmFetchError && error.code === "UNSAFE_URL"
-            ? 403
-            : 502,
-        );
       });
-    },
-  );
+      clientSocket.on("data", (chunk: Buffer) => {
+        sentBytes += chunk.length;
+        if (sentBytes > 512 * 1024) {
+          upstreamSocket.destroy();
+          clientSocket.destroy();
+        }
+      });
+      upstreamSocket.once("connect", () => {
+        clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        if (head.length > 0) upstreamSocket.write(head);
+        clientSocket.pipe(upstreamSocket);
+        upstreamSocket.pipe(clientSocket);
+      });
+      upstreamSocket.once("error", () => {
+        if (!clientSocket.destroyed) sendSocketError(clientSocket, 502);
+      });
+      clientSocket.once("error", () => upstreamSocket.destroy());
+      clientSocket.once("close", () => upstreamSocket.destroy());
+    })().catch((error: unknown) => {
+      sendSocketError(
+        clientSocket,
+        error instanceof LlmFetchError && error.code === "UNSAFE_URL" ? 403 : 502,
+      );
+    });
+  });
   server.on("clientError", (_error, socket) => sendSocketError(socket, 400));
 
   await new Promise<void>((resolve, reject) => {
@@ -402,10 +350,7 @@ export async function createPinnedProxy(
   const address = server.address();
   if (!address || typeof address === "string") {
     server.close();
-    throw new LlmFetchError(
-      "CONFIG_MISSING",
-      "The pinned browser proxy could not start.",
-    );
+    throw new LlmFetchError("CONFIG_MISSING", "The pinned browser proxy could not start.");
   }
   server.on("error", () => {
     for (const socket of sockets) socket.destroy();

@@ -2,16 +2,10 @@ import type { CDPSession, Page } from "playwright-core";
 import { LlmFetchError } from "../errors.js";
 import { waitWithSignal } from "../internal/abort-signal.js";
 
-function withOptionalSignal<T>(
-  operation: Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
+function withOptionalSignal<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   return signal ? waitWithSignal(operation, signal) : operation;
 }
-function collectBoundedRenderedState(options: {
-  maxDomNodes: number;
-  maxTextCharacters: number;
-}): {
+function collectBoundedRenderedState(options: { maxDomNodes: number; maxTextCharacters: number }): {
   textLength: number;
   nodeCount: number;
   exceeded: boolean;
@@ -40,9 +34,7 @@ function collectBoundedRenderedState(options: {
   return { textLength, nodeCount, exceeded: false };
 }
 
-function isRenderedState(
-  value: unknown,
-): value is ReturnType<typeof collectBoundedRenderedState> {
+function isRenderedState(value: unknown): value is ReturnType<typeof collectBoundedRenderedState> {
   if (!value || typeof value !== "object") return false;
   const state = value as Partial<ReturnType<typeof collectBoundedRenderedState>>;
   return (
@@ -64,9 +56,10 @@ export async function waitForRenderedContent(
   policyError: () => LlmFetchError | undefined,
 ): Promise<void> {
   if (timeoutMs === 0) return;
-  const expression = `(${collectBoundedRenderedState.toString()})(${JSON.stringify(
-    { maxDomNodes, maxTextCharacters },
-  )})`;
+  const expression = `(${collectBoundedRenderedState.toString()})(${JSON.stringify({
+    maxDomNodes,
+    maxTextCharacters,
+  })})`;
   const startedAt = performance.now();
   let previous = "";
   let stableCount = 0;
@@ -76,10 +69,7 @@ export async function waitForRenderedContent(
     if (blocked) throw blocked;
     // Refresh the isolated world for each sample because a page may navigate
     // again after DOMContentLoaded while it is settling.
-    const frameTree = await withOptionalSignal(
-      session.send("Page.getFrameTree"),
-      signal,
-    );
+    const frameTree = await withOptionalSignal(session.send("Page.getFrameTree"), signal);
     const world = await withOptionalSignal(
       session.send("Page.createIsolatedWorld", {
         frameId: frameTree.frameTree.frame.id,
@@ -124,9 +114,7 @@ export async function waitForRenderedContent(
     const remaining = timeoutMs - (performance.now() - startedAt);
     if (remaining <= 0) return;
     await withOptionalSignal(
-      new Promise<void>((resolve) =>
-        setTimeout(resolve, Math.min(100, remaining)),
-      ),
+      new Promise<void>((resolve) => setTimeout(resolve, Math.min(100, remaining))),
       signal,
     );
   }

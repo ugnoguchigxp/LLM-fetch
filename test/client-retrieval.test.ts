@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  ContentRetriever,
-  SafeFetchResult,
-  SearchProvider,
-} from "../src/index.js";
+import type { ContentRetriever, SafeFetchResult, SearchProvider } from "../src/index.js";
 import { createLlmFetch } from "../src/index.js";
 import type { ContentGuard } from "../src/index.js";
 
@@ -54,9 +50,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
       additionalGuard: hangingGuard,
       additionalGuardTimeoutMs: 5,
     });
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/article" })).rejects.toMatchObject({
       code: "GUARD_FAILED",
     });
 
@@ -70,9 +64,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
       fetcher: vi.fn(async (url: string) => fetched(url, ARTICLE)),
       additionalGuard: invalidGuard,
     });
-    await expect(
-      invalidClient.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({
+    await expect(invalidClient.read({ url: "https://example.com/article" })).rejects.toMatchObject({
       code: "GUARD_FAILED",
     });
 
@@ -119,8 +111,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
               reason: "A bounded explanation.",
               techniques: [],
               segmentHash: "fixture",
-              matchedText:
-                "raw content that must not cross the public boundary",
+              matchedText: "raw content that must not cross the public boundary",
             },
           ],
           assurance: "low",
@@ -154,9 +145,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
       search: provider,
       fetcher: vi.fn(async () => ({ contentType: "text/html" })) as never,
     });
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/article" })).rejects.toMatchObject({
       code: "UPSTREAM_HTTP",
     });
   });
@@ -196,14 +185,10 @@ describe("llm-fetch client guards and custom retrieval", () => {
     };
     const client = createLlmFetch({
       search: provider,
-      fetcher: vi.fn(async () =>
-        fetched("https://attacker.example/other", ARTICLE),
-      ),
+      fetcher: vi.fn(async () => fetched("https://attacker.example/other", ARTICLE)),
     });
 
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/article" })).rejects.toMatchObject({
       code: "UPSTREAM_HTTP",
     });
   });
@@ -218,10 +203,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
     const client = createLlmFetch({
       search: provider,
       fetcher: vi.fn(async () =>
-        fetched(
-          "https://example.com/article?utm_source=fixture#section",
-          ARTICLE,
-        ),
+        fetched("https://example.com/article?utm_source=fixture#section", ARTICLE),
       ),
     });
 
@@ -291,9 +273,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
       browser: { retriever: browser },
     });
 
-    await expect(
-      client.read({ url: "https://example.com/app" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/app" })).rejects.toMatchObject({
       code: "CONTENT_INSUFFICIENT",
     });
     expect(browserRetrieve).not.toHaveBeenCalled();
@@ -322,9 +302,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
       },
     });
 
-    await expect(
-      client.read({ url: "https://example.com/app" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/app" })).rejects.toMatchObject({
       code: "TIMEOUT",
     });
     expect(browserRetrieve).not.toHaveBeenCalled();
@@ -451,9 +429,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
       browser: { retriever: browser },
     });
 
-    await expect(
-      client.read({ url: "https://example.com/app" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/app" })).rejects.toMatchObject({
       code: "GUARD_DENIED",
     });
     expect(browserRetrieve).not.toHaveBeenCalled();
@@ -520,14 +496,10 @@ describe("llm-fetch client guards and custom retrieval", () => {
     expect(close).toHaveBeenCalledOnce();
     releaseClose();
     await Promise.all([first, second]);
-    await expect(client.search({ query: "after close" })).rejects.toMatchObject(
-      {
-        code: "CONFIG_MISSING",
-      },
-    );
-    await expect(
-      client.read({ url: "https://example.com/" }),
-    ).rejects.toMatchObject({
+    await expect(client.search({ query: "after close" })).rejects.toMatchObject({
+      code: "CONFIG_MISSING",
+    });
+    await expect(client.read({ url: "https://example.com/" })).rejects.toMatchObject({
       code: "CONFIG_MISSING",
     });
   });

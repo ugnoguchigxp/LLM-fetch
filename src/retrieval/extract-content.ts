@@ -22,20 +22,13 @@ const CANDIDATE_SELECTORS = [
   "body",
 ] as const;
 
-const BLOCK_ELEMENTS = new Set([
-  "blockquote",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "li",
-  "p",
-  "pre",
-  "td",
-]);
+const BLOCK_ELEMENTS = new Set(["blockquote", "h1", "h2", "h3", "h4", "li", "p", "pre", "td"]);
 
 function normalizeInlineText(value: string): string {
-  return value.replace(/[\t\f\v ]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
+  return value
+    .replace(/[\t\f\v ]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
 }
 
 function normalizePlainText(value: string): string {
@@ -62,9 +55,7 @@ const CHARSET_ALIASES = new Map([
 ]);
 
 function declaredCharset(value: string): string | undefined {
-  return /(?:^|[;\s])charset\s*=\s*["']?([^;"'\s/>]+)/iu.exec(
-    value,
-  )?.[1]?.toLowerCase();
+  return /(?:^|[;\s])charset\s*=\s*["']?([^;"'\s/>]+)/iu.exec(value)?.[1]?.toLowerCase();
 }
 
 function bomCharset(body: Uint8Array): { charset: string; offset: number } | undefined {
@@ -82,13 +73,12 @@ function bomCharset(body: Uint8Array): { charset: string; offset: number } | und
 
 function metaCharset(body: Uint8Array): string | undefined {
   const preview = new TextDecoder("windows-1252").decode(body.slice(0, 4_096));
-  const direct = /<meta\b[^>]*\scharset\s*=\s*["']?\s*([^\s"'/>;]+)/iu.exec(
-    preview,
-  )?.[1];
+  const direct = /<meta\b[^>]*\scharset\s*=\s*["']?\s*([^\s"'/>;]+)/iu.exec(preview)?.[1];
   if (direct) return direct.toLowerCase();
-  const httpEquiv = /<meta\b(?=[^>]*\shttp-equiv\s*=\s*["']?content-type["']?)[^>]*\scontent\s*=\s*["']([^"']+)["'][^>]*>/iu.exec(
-    preview,
-  )?.[1];
+  const httpEquiv =
+    /<meta\b(?=[^>]*\shttp-equiv\s*=\s*["']?content-type["']?)[^>]*\scontent\s*=\s*["']([^"']+)["'][^>]*>/iu.exec(
+      preview,
+    )?.[1];
   return httpEquiv ? declaredCharset(httpEquiv) : undefined;
 }
 
@@ -108,15 +98,12 @@ export function decodeBody(body: Uint8Array, contentTypeHeader: string): string 
   const mediaType = contentTypeHeader.split(";", 1)[0]?.trim().toLowerCase();
   const declared = declaredCharset(contentTypeHeader);
   const fromMeta =
-    !declared &&
-    (mediaType === "text/html" || mediaType === "application/xhtml+xml")
+    !declared && (mediaType === "text/html" || mediaType === "application/xhtml+xml")
       ? metaCharset(body)
       : undefined;
   const charset = normalizeCharset(bom?.charset ?? declared ?? fromMeta ?? "utf-8");
   try {
-    return new TextDecoder(charset, { fatal: true }).decode(
-      bom ? body.subarray(bom.offset) : body,
-    );
+    return new TextDecoder(charset, { fatal: true }).decode(bom ? body.subarray(bom.offset) : body);
   } catch (error) {
     if (error instanceof LlmFetchError) throw error;
     throw new LlmFetchError(
@@ -225,10 +212,7 @@ function candidateMetrics(element: AnyNode): {
   };
 }
 
-function candidateCoversBodyText(
-  body: AnyNode,
-  candidates: readonly AnyNode[],
-): boolean {
+function candidateCoversBodyText(body: AnyNode, candidates: readonly AnyNode[]): boolean {
   return candidates.some((candidate) => {
     const stack = [...domNodeChildren(body)];
     while (stack.length > 0) {
@@ -266,11 +250,7 @@ function prefixSums(values: readonly number[]): number[] {
   return prefix;
 }
 
-function normalizedGapLength(
-  value: string,
-  start: number,
-  end: number,
-): number {
+function normalizedGapLength(value: string, start: number, end: number): number {
   let newlineCount = 0;
   for (let index = start; index < end; index += 1) {
     const code = value.charCodeAt(index);
@@ -312,9 +292,7 @@ function buildCandidateTextIndex(
     openedLink?: LinkCapture;
   };
   const root = $.root().get(0);
-  const stack: Entry[] = root
-    ? [{ phase: "enter", node: root }]
-    : [];
+  const stack: Entry[] = root ? [{ phase: "enter", node: root }] : [];
   const textParts: string[] = [];
   const ranges = new Map<AnyNode, CandidateRange>();
   const paragraphPositions: number[] = [];
@@ -340,9 +318,7 @@ function buildCandidateTextIndex(
         separator();
       }
       if (entry.openedLink) {
-        const textLengthForLink = normalizeInlineText(
-          entry.openedLink.textParts.join(" "),
-        ).length;
+        const textLengthForLink = normalizeInlineText(entry.openedLink.textParts.join(" ")).length;
         if (textLengthForLink > 0) {
           linkIntervals.push({
             start: entry.openedLink.start,
@@ -358,9 +334,7 @@ function buildCandidateTextIndex(
       continue;
     }
 
-    const candidate = candidates.has(entry.node as AnyNode)
-      ? entry.node as AnyNode
-      : undefined;
+    const candidate = candidates.has(entry.node as AnyNode) ? (entry.node as AnyNode) : undefined;
     if (candidate) ranges.set(candidate, { start: textLength, end: textLength });
     const name = domNodeName(entry.node);
     const block = BLOCK_ELEMENTS.has(name);
@@ -436,21 +410,15 @@ function buildCandidateTextIndex(
     while (start < end) {
       const runStart = runStarts[start];
       const runEnd = runEnds[start];
-      if (
-        runStart !== undefined &&
-        runEnd !== undefined &&
-        rawText.slice(runStart, runEnd).trim()
-      ) break;
+      if (runStart !== undefined && runEnd !== undefined && rawText.slice(runStart, runEnd).trim())
+        break;
       start += 1;
     }
     while (end > start) {
       const runStart = runStarts[end - 1];
       const runEnd = runEnds[end - 1];
-      if (
-        runStart !== undefined &&
-        runEnd !== undefined &&
-        rawText.slice(runStart, runEnd).trim()
-      ) break;
+      if (runStart !== undefined && runEnd !== undefined && rawText.slice(runStart, runEnd).trim())
+        break;
       end -= 1;
     }
     if (start >= end) return 0;
@@ -463,7 +431,8 @@ function buildCandidateTextIndex(
       firstEnd === undefined ||
       lastStart === undefined ||
       lastEnd === undefined
-    ) return 0;
+    )
+      return 0;
     const firstText = rawText.slice(firstStart, firstEnd);
     if (start === end - 1) return firstText.trim().length;
     const lastText = rawText.slice(lastStart, lastEnd);
@@ -500,10 +469,7 @@ function buildCandidateTextIndex(
   };
 }
 
-export function loadHtml(
-  html: string,
-  limits: HtmlStructureLimits = {},
-): CheerioAPI {
+export function loadHtml(html: string, limits: HtmlStructureLimits = {}): CheerioAPI {
   assertHtmlSourceWithinLimits(html, limits);
   try {
     const $ = load(html);
@@ -519,10 +485,7 @@ export function loadHtml(
   }
 }
 
-export function loadXml(
-  xml: string,
-  limits: HtmlStructureLimits = {},
-): CheerioAPI {
+export function loadXml(xml: string, limits: HtmlStructureLimits = {}): CheerioAPI {
   assertHtmlSourceWithinLimits(xml, limits, true);
   try {
     const $ = load(xml, { xmlMode: true });
@@ -549,9 +512,13 @@ export function extractHtmlContent(
     $("meta[property='og:title']").attr("content") ||
       $("title").first().text() ||
       $("h1").first().text(),
-  ).replace(/\s+/gu, " ").slice(0, 1_000);
+  )
+    .replace(/\s+/gu, " ")
+    .slice(0, 1_000);
 
-  $("script, style, nav, header, footer, aside, noscript, svg, iframe, object, embed, form, input, textarea, select, option, button, .advertisement, .ads, .sidebar").remove();
+  $(
+    "script, style, nav, header, footer, aside, noscript, svg, iframe, object, embed, form, input, textarea, select, option, button, .advertisement, .ads, .sidebar",
+  ).remove();
 
   let bestText = "";
   let bestScore = Number.NEGATIVE_INFINITY;
@@ -564,10 +531,7 @@ export function extractHtmlContent(
       if (candidateSet.has(element)) return;
       candidateSet.add(element);
       candidateElements.push(element);
-      if (
-        candidateElements.length >
-        DEFAULT_HTML_STRUCTURE_LIMITS.maxCandidates
-      ) {
+      if (candidateElements.length > DEFAULT_HTML_STRUCTURE_LIMITS.maxCandidates) {
         throw new LlmFetchError(
           "RESPONSE_TOO_LARGE",
           "The HTML response exceeded the content-candidate limit.",
@@ -600,10 +564,7 @@ export function extractHtmlContent(
         scoreDirectCandidate(element);
       }
     }
-    if (
-      bodyCandidate &&
-      !candidateCoversBodyText(bodyCandidate, nonBodyCandidates)
-    ) {
+    if (bodyCandidate && !candidateCoversBodyText(bodyCandidate, nonBodyCandidates)) {
       scoreDirectCandidate(bodyCandidate);
     }
   } else {

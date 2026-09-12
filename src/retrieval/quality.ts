@@ -11,9 +11,7 @@ export function scoreContentMetrics(input: {
   linkTextLength: number;
 }): ContentQuality {
   const characterCount = input.characterCount;
-  const linkDensity = characterCount === 0
-    ? 1
-    : Math.min(1, input.linkTextLength / characterCount);
+  const linkDensity = characterCount === 0 ? 1 : Math.min(1, input.linkTextLength / characterCount);
   const score =
     Math.min(characterCount, 20_000) +
     Math.min(input.paragraphCount, 20) * 120 -

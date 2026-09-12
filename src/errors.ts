@@ -1,7 +1,4 @@
-import type {
-  GuardDecision,
-  SecurityFindingCategory,
-} from "./contracts.js";
+import type { GuardDecision, SecurityFindingCategory } from "./contracts.js";
 
 export type LlmFetchErrorCode =
   | "INVALID_INPUT"
@@ -37,17 +34,10 @@ export class LlmFetchError extends Error {
   readonly status?: number;
   readonly retryable: boolean;
   readonly cooldownMs?: number;
-  readonly guardDecision?: Extract<
-    GuardDecision,
-    "require_approval" | "deny"
-  >;
+  readonly guardDecision?: Extract<GuardDecision, "require_approval" | "deny">;
   readonly warningCategories?: readonly SecurityFindingCategory[];
 
-  constructor(
-    code: LlmFetchErrorCode,
-    message: string,
-    options: LlmFetchErrorOptions = {},
-  ) {
+  constructor(code: LlmFetchErrorCode, message: string, options: LlmFetchErrorOptions = {}) {
     super(message, { cause: options.cause });
     this.name = "LlmFetchError";
     this.code = code;
@@ -60,9 +50,7 @@ export class LlmFetchError extends Error {
       this.guardDecision = options.guardDecision;
     }
     if (options.warningCategories !== undefined) {
-      this.warningCategories = Object.freeze([
-        ...new Set(options.warningCategories),
-      ]);
+      this.warningCategories = Object.freeze([...new Set(options.warningCategories)]);
     }
   }
 
@@ -75,12 +63,8 @@ export class LlmFetchError extends Error {
       ...(this.provider === undefined ? {} : { provider: this.provider }),
       ...(this.url === undefined ? {} : { url: this.url }),
       ...(this.status === undefined ? {} : { status: this.status }),
-      ...(this.cooldownMs === undefined
-        ? {}
-        : { cooldownMs: this.cooldownMs }),
-      ...(this.guardDecision === undefined
-        ? {}
-        : { guardDecision: this.guardDecision }),
+      ...(this.cooldownMs === undefined ? {} : { cooldownMs: this.cooldownMs }),
+      ...(this.guardDecision === undefined ? {} : { guardDecision: this.guardDecision }),
       ...(this.warningCategories === undefined
         ? {}
         : { warningCategories: [...this.warningCategories] }),
@@ -105,9 +89,5 @@ export function toLlmFetchError(
   };
   if (fallback.provider !== undefined) options.provider = fallback.provider;
   if (fallback.url !== undefined) options.url = fallback.url;
-  return new LlmFetchError(
-    fallback.code ?? "UNKNOWN",
-    fallback.message,
-    options,
-  );
+  return new LlmFetchError(fallback.code ?? "UNKNOWN", fallback.message, options);
 }

@@ -1,10 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createBuiltinContextGuard } from "../dist/index.js";
-import {
-  attackCorpus,
-  benignCorpus,
-} from "../test/fixtures/context-guard-corpus.js";
+import { attackCorpus, benignCorpus } from "../test/fixtures/context-guard-corpus.js";
 
 const outputUrl = new URL(
   "../crates/tauri-plugin-llm-fetch/tests/fixtures/security/ts-guard-v1.json",
@@ -51,9 +48,7 @@ const generated = await generate();
 if (process.argv.includes("--check")) {
   const committed = await readFile(outputUrl, "utf8").catch(() => "");
   if (committed !== generated) {
-    throw new Error(
-      `Rust guard fixture is stale. Run node ${fileURLToPath(import.meta.url)}.`,
-    );
+    throw new Error(`Rust guard fixture is stale. Run node ${fileURLToPath(import.meta.url)}.`);
   }
 } else {
   await writeFile(outputUrl, generated);

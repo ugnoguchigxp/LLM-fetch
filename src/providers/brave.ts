@@ -1,17 +1,10 @@
 import type { SearchHit, SearchInput, SearchProvider } from "../contracts.js";
 import { LlmFetchError, toLlmFetchError } from "../errors.js";
-import {
-  abortReason,
-  isAbortSignal,
-  waitWithSignal,
-} from "../internal/abort-signal.js";
+import { abortReason, isAbortSignal, waitWithSignal } from "../internal/abort-signal.js";
 import { createDeadline } from "../internal/deadline.js";
 import { PACKAGE_VERSION } from "../internal/version.js";
 import { readResponseBytes } from "../internal/read-response.js";
-import {
-  deduplicateSearchUrls,
-  normalizeResultUrl,
-} from "../retrieval/url-normalizer.js";
+import { deduplicateSearchUrls, normalizeResultUrl } from "../retrieval/url-normalizer.js";
 
 const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 
@@ -58,9 +51,7 @@ function withBraveContext(error: LlmFetchError): LlmFetchError {
     retryable: error.retryable,
     ...(error.url === undefined ? {} : { url: error.url }),
     ...(error.status === undefined ? {} : { status: error.status }),
-    ...(error.cooldownMs === undefined
-      ? {}
-      : { cooldownMs: error.cooldownMs }),
+    ...(error.cooldownMs === undefined ? {} : { cooldownMs: error.cooldownMs }),
   });
 }
 
@@ -76,22 +67,15 @@ function resultArray(value: unknown): BraveResult[] | null {
   if (!web || typeof web !== "object") return null;
   const results = Reflect.get(web, "results");
   return Array.isArray(results)
-    ? results.filter(
-        (item): item is BraveResult =>
-          item !== null && typeof item === "object",
-      )
+    ? results.filter((item): item is BraveResult => item !== null && typeof item === "object")
     : null;
 }
 
 function validateInput(input: SearchInput): { query: string; limit: number } {
   if (!input || typeof input !== "object" || typeof input.query !== "string") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Search input and query are required.",
-      {
-        provider: "brave",
-      },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Search input and query are required.", {
+      provider: "brave",
+    });
   }
   const query = input.query.trim();
   const limit = input.limit ?? 10;
@@ -103,11 +87,9 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
     );
   }
   if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "Search limit must be an integer between 1 and 20.",
-      { provider: "brave" },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "Search limit must be an integer between 1 and 20.", {
+      provider: "brave",
+    });
   }
   if (
     input.safeSearch !== undefined &&
@@ -127,9 +109,7 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
   }
   if (
     input.locale !== undefined &&
-    (typeof input.locale !== "string" ||
-      !input.locale.trim() ||
-      input.locale.length > 100)
+    (typeof input.locale !== "string" || !input.locale.trim() || input.locale.length > 100)
   ) {
     throw new LlmFetchError("INVALID_INPUT", "locale is invalid.", {
       provider: "brave",
@@ -137,8 +117,7 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
   }
   if (
     input.language !== undefined &&
-    (typeof input.language !== "string" ||
-      !/^[a-z]{2}$/iu.test(input.language))
+    (typeof input.language !== "string" || !/^[a-z]{2}$/iu.test(input.language))
   ) {
     throw new LlmFetchError("INVALID_INPUT", "language is invalid.", {
       provider: "brave",
@@ -153,11 +132,9 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
     });
   }
   if (input.locale && (input.language || input.region)) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "locale cannot be combined with language or region.",
-      { provider: "brave" },
-    );
+    throw new LlmFetchError("INVALID_INPUT", "locale cannot be combined with language or region.", {
+      provider: "brave",
+    });
   }
   if (input.signal !== undefined && !isAbortSignal(input.signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.", {
@@ -171,9 +148,7 @@ function validateInput(input: SearchInput): { query: string; limit: number } {
 function retryAfterMs(value: string | null, now = Date.now()): number {
   if (!value) return 60_000;
   const seconds = Number(value.trim());
-  const milliseconds = Number.isFinite(seconds)
-    ? seconds * 1_000
-    : Date.parse(value) - now;
+  const milliseconds = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(value) - now;
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) return 60_000;
   return Math.min(Math.ceil(milliseconds), 300_000);
 }
@@ -199,34 +174,19 @@ export function brave(options: BraveOptions): SearchProvider {
       provider: "brave",
     });
   }
-  const apiKey =
-    typeof options.apiKey === "string" ? options.apiKey.trim() : "";
-  if (
-    !apiKey ||
-    apiKey.length > 512 ||
-    hasControlCharacters(apiKey)
-  ) {
-    throw new LlmFetchError(
-      "CONFIG_MISSING",
-      "A valid Brave Search API key is required.",
-      { provider: "brave" },
-    );
+  const apiKey = typeof options.apiKey === "string" ? options.apiKey.trim() : "";
+  if (!apiKey || apiKey.length > 512 || hasControlCharacters(apiKey)) {
+    throw new LlmFetchError("CONFIG_MISSING", "A valid Brave Search API key is required.", {
+      provider: "brave",
+    });
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") {
-    throw new LlmFetchError(
-      "CONFIG_MISSING",
-      "A Fetch implementation is required.",
-      {
-        provider: "brave",
-      },
-    );
+    throw new LlmFetchError("CONFIG_MISSING", "A Fetch implementation is required.", {
+      provider: "brave",
+    });
   }
-  const timeoutMs = positiveInteger(
-    options.timeoutMs ?? 5_000,
-    "timeoutMs",
-    300_000,
-  );
+  const timeoutMs = positiveInteger(options.timeoutMs ?? 5_000, "timeoutMs", 300_000);
   const maxResponseBytes = positiveInteger(
     options.maxResponseBytes ?? 1_000_000,
     "maxResponseBytes",
@@ -288,15 +248,11 @@ export function brave(options: BraveOptions): SearchProvider {
           deadline.remainingMs() <= 0 ||
           (error instanceof Error && error.name === "TimeoutError")
         ) {
-          throw new LlmFetchError(
-            "TIMEOUT",
-            "Brave Search request timed out.",
-            {
-              provider: "brave",
-              retryable: true,
-              cause: error,
-            },
-          );
+          throw new LlmFetchError("TIMEOUT", "Brave Search request timed out.", {
+            provider: "brave",
+            retryable: true,
+            cause: error,
+          });
         }
         throw toLlmFetchError(error, {
           code: "UPSTREAM_HTTP",
@@ -310,28 +266,20 @@ export function brave(options: BraveOptions): SearchProvider {
         const cooldownMs = retryAfterMs(response.headers.get("retry-after"));
         discardBody(response);
         rateLimitedUntil = Date.now() + cooldownMs;
-        throw new LlmFetchError(
-          "RATE_LIMITED",
-          "Brave Search rate limited the request.",
-          {
-            provider: "brave",
-            status: 429,
-            retryable: true,
-            cooldownMs,
-          },
-        );
+        throw new LlmFetchError("RATE_LIMITED", "Brave Search rate limited the request.", {
+          provider: "brave",
+          status: 429,
+          retryable: true,
+          cooldownMs,
+        });
       }
       if (!response.ok) {
         discardBody(response);
-        throw new LlmFetchError(
-          "UPSTREAM_HTTP",
-          `Brave Search returned HTTP ${response.status}.`,
-          {
-            provider: "brave",
-            status: response.status,
-            retryable: response.status >= 500,
-          },
-        );
+        throw new LlmFetchError("UPSTREAM_HTTP", `Brave Search returned HTTP ${response.status}.`, {
+          provider: "brave",
+          status: response.status,
+          retryable: response.status >= 500,
+        });
       }
 
       const contentType = response.headers
@@ -341,14 +289,10 @@ export function brave(options: BraveOptions): SearchProvider {
         .toLowerCase();
       if (contentType && contentType !== "application/json") {
         discardBody(response);
-        throw new LlmFetchError(
-          "PARSE_CHANGED",
-          "Brave Search returned a non-JSON response.",
-          {
-            provider: "brave",
-            retryable: true,
-          },
-        );
+        throw new LlmFetchError("PARSE_CHANGED", "Brave Search returned a non-JSON response.", {
+          provider: "brave",
+          retryable: true,
+        });
       }
       let bytes: Uint8Array;
       try {
@@ -360,15 +304,11 @@ export function brave(options: BraveOptions): SearchProvider {
           deadline.remainingMs() <= 0 ||
           (error instanceof Error && error.name === "TimeoutError")
         ) {
-          throw new LlmFetchError(
-            "TIMEOUT",
-            "Brave Search request timed out.",
-            {
-              provider: "brave",
-              retryable: true,
-              cause: error,
-            },
-          );
+          throw new LlmFetchError("TIMEOUT", "Brave Search request timed out.", {
+            provider: "brave",
+            retryable: true,
+            cause: error,
+          });
         }
         throw toLlmFetchError(error, {
           code: "UPSTREAM_HTTP",
@@ -381,35 +321,25 @@ export function brave(options: BraveOptions): SearchProvider {
       try {
         data = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
       } catch (error) {
-        throw new LlmFetchError(
-          "PARSE_CHANGED",
-          "Brave Search returned invalid JSON.",
-          {
-            provider: "brave",
-            retryable: true,
-            cause: error,
-          },
-        );
+        throw new LlmFetchError("PARSE_CHANGED", "Brave Search returned invalid JSON.", {
+          provider: "brave",
+          retryable: true,
+          cause: error,
+        });
       }
 
       const parsedResults = resultArray(data);
       if (!parsedResults) {
-        throw new LlmFetchError(
-          "PARSE_CHANGED",
-          "Brave Search response shape changed.",
-          {
-            provider: "brave",
-            retryable: true,
-          },
-        );
+        throw new LlmFetchError("PARSE_CHANGED", "Brave Search response shape changed.", {
+          provider: "brave",
+          retryable: true,
+        });
       }
       const hits: SearchHit[] = [];
       for (const result of parsedResults) {
-        const title =
-          typeof result.title === "string" ? result.title.trim() : "";
+        const title = typeof result.title === "string" ? result.title.trim() : "";
         const rawUrl = typeof result.url === "string" ? result.url : "";
-        const urlValue =
-          rawUrl.length <= 2_048 ? normalizeResultUrl(rawUrl) : null;
+        const urlValue = rawUrl.length <= 2_048 ? normalizeResultUrl(rawUrl) : null;
         if (!title || !urlValue) continue;
         hits.push({
           trust: "untrusted",

@@ -7,9 +7,7 @@ if (typeof tag !== "string" || !tag) {
   throw new Error("A release tag is required.");
 }
 if (tag !== `v${manifest.version}`) {
-  throw new Error(
-    `Release tag ${tag} does not match package version v${manifest.version}.`,
-  );
+  throw new Error(`Release tag ${tag} does not match package version v${manifest.version}.`);
 }
 
 process.stdout.write(`Release tag ${tag} matches package.json.\n`);

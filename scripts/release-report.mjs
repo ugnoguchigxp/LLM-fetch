@@ -8,24 +8,17 @@ const execFileAsync = promisify(execFile);
 const projectRoot = new URL("../", import.meta.url);
 const requireCanaries = process.argv.includes("--require-canaries");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const manifest = JSON.parse(
-  await readFile(new URL("package.json", projectRoot), "utf8"),
-);
-const packed = await execFileAsync(
-  npmCommand,
-  ["pack", "--dry-run", "--json"],
-  { cwd: projectRoot, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
-);
+const manifest = JSON.parse(await readFile(new URL("package.json", projectRoot), "utf8"));
+const packed = await execFileAsync(npmCommand, ["pack", "--dry-run", "--json"], {
+  cwd: projectRoot,
+  encoding: "utf8",
+  maxBuffer: 10 * 1024 * 1024,
+});
 const jsonStart = packed.stdout.lastIndexOf("\n[");
-const pack = JSON.parse(
-  jsonStart >= 0 ? packed.stdout.slice(jsonStart + 1) : packed.stdout,
-)?.[0];
+const pack = JSON.parse(jsonStart >= 0 ? packed.stdout.slice(jsonStart + 1) : packed.stdout)?.[0];
 
 const vitestManifest = JSON.parse(
-  await readFile(
-    new URL("node_modules/vitest/package.json", projectRoot),
-    "utf8",
-  ),
+  await readFile(new URL("node_modules/vitest/package.json", projectRoot), "utf8"),
 );
 const vitestBin = vitestManifest.bin?.vitest;
 if (typeof vitestBin !== "string" || !vitestBin) {
@@ -68,16 +61,9 @@ try {
 let benchmark;
 try {
   benchmark = JSON.parse(
-    await readFile(
-      new URL(".release-evidence/benchmark-summary.json", projectRoot),
-      "utf8",
-    ),
+    await readFile(new URL(".release-evidence/benchmark-summary.json", projectRoot), "utf8"),
   );
-  if (
-    !clean ||
-    benchmark.git?.commit !== currentCommit ||
-    benchmark.git?.clean !== true
-  ) {
+  if (!clean || benchmark.git?.commit !== currentCommit || benchmark.git?.clean !== true) {
     benchmark = null;
   }
 } catch {
@@ -90,10 +76,7 @@ for (const provider of ["duckduckgo", "brave"]) {
   try {
     const canary = JSON.parse(
       await readFile(
-        new URL(
-          `.release-evidence/provider-canary-${provider}.json`,
-          projectRoot,
-        ),
+        new URL(`.release-evidence/provider-canary-${provider}.json`, projectRoot),
         "utf8",
       ),
     );
@@ -118,17 +101,11 @@ for (const provider of ["duckduckgo", "brave"]) {
 }
 if (requireCanaries) {
   if (!clean) {
-    throw new Error(
-      "Current-commit provider canary evidence requires a clean worktree.",
-    );
+    throw new Error("Current-commit provider canary evidence requires a clean worktree.");
   }
-  const missing = ["duckduckgo", "brave"].filter(
-    (provider) => canaries[provider] === undefined,
-  );
+  const missing = ["duckduckgo", "brave"].filter((provider) => canaries[provider] === undefined);
   if (missing.length > 0) {
-    throw new Error(
-      `Current-commit provider canary evidence is missing: ${missing.join(", ")}.`,
-    );
+    throw new Error(`Current-commit provider canary evidence is missing: ${missing.join(", ")}.`);
   }
   if (canaries.brave?.status !== "passed") {
     throw new Error("The Brave provider release canary did not pass.");

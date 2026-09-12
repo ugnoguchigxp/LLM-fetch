@@ -19,17 +19,14 @@ describe("Playwright rendered DOM integration", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 
-  it.runIf(integrationEnabled)(
-    "reports the launchable headless runtime as available",
-    async () => {
-      const retriever = playwrightRetriever();
-      try {
-        await expect(retriever.isAvailable?.()).resolves.toBe(true);
-      } finally {
-        await retriever.close?.();
-      }
-    },
-  );
+  it.runIf(integrationEnabled)("reports the launchable headless runtime as available", async () => {
+    const retriever = playwrightRetriever();
+    try {
+      await expect(retriever.isAvailable?.()).resolves.toBe(true);
+    } finally {
+      await retriever.close?.();
+    }
+  });
 
   it.runIf(integrationEnabled)(
     "retrieves a rendered page through the public client entry point",
@@ -120,9 +117,7 @@ describe("Playwright rendered DOM integration", () => {
           maxHtmlCharacters: 100_000,
           maxDomNodes: 1_000,
         });
-        expect(snapshot.html).toContain(
-          'data-llm-fetch-computed-hidden="true"',
-        );
+        expect(snapshot.html).toContain('data-llm-fetch-computed-hidden="true"');
         expect(
           snapshot.html.match(/data-llm-fetch-computed-hidden/g)?.length,
         ).toBeGreaterThanOrEqual(3);
@@ -136,9 +131,7 @@ describe("Playwright rendered DOM integration", () => {
         });
         expect(result.decision).toBe("require_approval");
         expect(result.findings).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ location: "hidden" }),
-          ]),
+          expect.arrayContaining([expect.objectContaining({ location: "hidden" })]),
         );
       } finally {
         await browser.close();
@@ -258,9 +251,9 @@ describe("Playwright rendered DOM integration", () => {
         },
       });
       try {
-        await expect(
-          retriever.retrieve("http://fixture.example/"),
-        ).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
+        await expect(retriever.retrieve("http://fixture.example/")).rejects.toMatchObject({
+          code: "RESPONSE_TOO_LARGE",
+        });
       } finally {
         await retriever.close?.();
         setPinnedProxyHttpRequestForTesting();

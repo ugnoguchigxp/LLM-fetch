@@ -16,10 +16,7 @@ export async function readResponseBytes(
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
   if (!Number.isInteger(maxBytes) || maxBytes < 1) {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "maxBytes must be a positive integer.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "maxBytes must be a positive integer.");
   }
   if (signal !== undefined && !isAbortSignal(signal)) {
     throw new LlmFetchError("INVALID_INPUT", "signal must be an AbortSignal.");
@@ -28,10 +25,7 @@ export async function readResponseBytes(
   const rawContentLength = response.headers.get("content-length") ?? "";
   if (rawContentLength && !/^\d+$/.test(rawContentLength)) {
     cancelResponseBody(response);
-    throw new LlmFetchError(
-      "UPSTREAM_HTTP",
-      "Response content-length is invalid.",
-    );
+    throw new LlmFetchError("UPSTREAM_HTTP", "Response content-length is invalid.");
   }
   const contentLength = Number(rawContentLength || 0);
   if (!Number.isSafeInteger(contentLength) || contentLength > maxBytes) {
@@ -54,10 +48,7 @@ export async function readResponseBytes(
       if (item.done) break;
       received += item.value.byteLength;
       if (received > maxBytes) {
-        throw new LlmFetchError(
-          "RESPONSE_TOO_LARGE",
-          `Response body exceeds ${maxBytes} bytes.`,
-        );
+        throw new LlmFetchError("RESPONSE_TOO_LARGE", `Response body exceeds ${maxBytes} bytes.`);
       }
       chunks.push(item.value);
     }

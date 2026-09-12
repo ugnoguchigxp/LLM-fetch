@@ -11,15 +11,8 @@ import type {
   SourceMetadata,
 } from "./contracts.js";
 import { LlmFetchError, toLlmFetchError } from "./errors.js";
-import {
-  abortReason,
-  waitWithSignal,
-} from "./internal/abort-signal.js";
-import {
-  createDeadline,
-  throwIfDeadlineElapsed,
-  type Deadline,
-} from "./internal/deadline.js";
+import { abortReason, waitWithSignal } from "./internal/abort-signal.js";
+import { createDeadline, throwIfDeadlineElapsed, type Deadline } from "./internal/deadline.js";
 import { InFlightMap } from "./internal/in-flight.js";
 import { LruCache } from "./internal/lru-cache.js";
 import { createSearchAndRead } from "./client-search-and-read.js";
@@ -37,14 +30,9 @@ import {
   type ContentRetriever,
 } from "./retrieval/content-retriever.js";
 import { isLikelyDynamicHtml } from "./retrieval/dynamic-content.js";
-import {
-  createSafeHttpFetcher,
-} from "./retrieval/http-fetcher.js";
+import { createSafeHttpFetcher } from "./retrieval/http-fetcher.js";
 import { normalizeResultUrl } from "./retrieval/url-normalizer.js";
-import {
-  createInternalBuiltinContextGuard,
-  runAdditionalGuard,
-} from "./security/context-guard.js";
+import { createInternalBuiltinContextGuard, runAdditionalGuard } from "./security/context-guard.js";
 import { mergeGuardResults } from "./security/merge-decisions.js";
 import type { ContentSegment } from "./security/html-segments.js";
 import { createToolset, type LlmFetchToolset } from "./tools/toolset.js";
@@ -57,10 +45,7 @@ import {
   timeoutError,
   validateFetchResult,
 } from "./client-validation.js";
-import {
-  validateClientOptions,
-  type LlmFetchOptions,
-} from "./client-options.js";
+import { validateClientOptions, type LlmFetchOptions } from "./client-options.js";
 
 export type { LlmFetchOptions } from "./client-options.js";
 
@@ -78,11 +63,7 @@ function cloneHits(hits: readonly SearchHit[]): SearchHit[] {
   return hits.map((hit) => ({ ...hit }));
 }
 
-function sourceMetadata(
-  input: ReadInput,
-  finalUrl: string,
-  fetchedAt: string,
-): SourceMetadata {
+function sourceMetadata(input: ReadInput, finalUrl: string, fetchedAt: string): SourceMetadata {
   const source: SourceMetadata = {
     kind: "web",
     trust: "untrusted",
@@ -94,8 +75,7 @@ function sourceMetadata(
     source.provider = input.source.provider;
     source.query = input.source.query;
     source.rank = input.source.rank;
-    if (input.source.snippet !== undefined)
-      source.snippet = input.source.snippet;
+    if (input.source.snippet !== undefined) source.snippet = input.source.snippet;
   }
   return source;
 }
@@ -140,9 +120,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
   );
   const builtinGuard = createInternalBuiltinContextGuard(options.contextGuard);
   const searchCache = new LruCache<SearchHit[]>(cacheEnabled ? maxEntries : 0);
-  const documentCache = new LruCache<CachedDocument>(
-    cacheEnabled ? maxEntries : 0,
-  );
+  const documentCache = new LruCache<CachedDocument>(cacheEnabled ? maxEntries : 0);
   const searchInflight = new InFlightMap<SearchHit[]>();
   const readInflight = new InFlightMap<CachedDocument>();
   let closed = false;
@@ -150,10 +128,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
 
   function assertOpen(): void {
     if (closed) {
-      throw new LlmFetchError(
-        "CONFIG_MISSING",
-        "The llm-fetch client is closed.",
-      );
+      throw new LlmFetchError("CONFIG_MISSING", "The llm-fetch client is closed.");
     }
   }
 
@@ -161,19 +136,11 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     input: Parameters<ContentGuard["inspect"]>[0],
   ): Promise<GuardResult> {
     if (!additionalGuard) {
-      throw new LlmFetchError(
-        "GUARD_FAILED",
-        "No additional guard is configured.",
-      );
+      throw new LlmFetchError("GUARD_FAILED", "No additional guard is configured.");
     }
     const timeoutSignal = AbortSignal.timeout(additionalGuardTimeoutMs);
-    const signal = input.signal
-      ? AbortSignal.any([input.signal, timeoutSignal])
-      : timeoutSignal;
-    return waitWithSignal(
-      runAdditionalGuard(additionalGuard, { ...input, signal }),
-      signal,
-    );
+    const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal;
+    return waitWithSignal(runAdditionalGuard(additionalGuard, { ...input, signal }), signal);
   }
 
   async function search(input: SearchInput): Promise<SearchHit[]> {
@@ -231,11 +198,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       searchCache.set(key, cloneHits(result), searchTtlMs);
       return result;
     };
-    const hits = await searchInflight.run(
-      key,
-      loadHits,
-      normalizedInput.signal,
-    );
+    const hits = await searchInflight.run(key, loadHits, normalizedInput.signal);
     return cloneHits(hits);
   }
 
@@ -268,13 +231,9 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
             });
             result = mergeGuardResults([builtinResult, extra]);
           } catch {
-            throw new LlmFetchError(
-              "GUARD_FAILED",
-              "Search result guard failed.",
-              {
-                url: hit.url,
-              },
-            );
+            throw new LlmFetchError("GUARD_FAILED", "Search result guard failed.", {
+              url: hit.url,
+            });
           }
         }
         return { hit, result };
@@ -282,10 +241,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     );
 
     const allowed = inspected
-      .filter(
-        ({ result }) =>
-          result.decision !== "deny" && result.decision !== "require_approval",
-      )
+      .filter(({ result }) => result.decision !== "deny" && result.decision !== "require_approval")
       .map(({ hit }) => hit);
     const results = inspected.map(({ result }) => result);
     const blockedResultCount = hits.length - allowed.length;
@@ -329,13 +285,9 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       return await runConfiguredGuard(guardInput);
     } catch {
       if (input.signal?.aborted) throw abortReason(input.signal);
-      throw new LlmFetchError(
-        "GUARD_FAILED",
-        "Additional content guard failed.",
-        {
-          url: fetched.finalUrl,
-        },
-      );
+      throw new LlmFetchError("GUARD_FAILED", "Additional content guard failed.", {
+        url: fetched.finalUrl,
+      });
     }
   }
 
@@ -383,8 +335,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     throwIfDeadlineElapsed(deadline);
     const fetchedAt = new Date().toISOString();
     const source = sourceMetadata(input, fetched.finalUrl, fetchedAt);
-    const contentTypeHeader =
-      fetched.headers["content-type"] ?? fetched.contentType;
+    const contentTypeHeader = fetched.headers["content-type"] ?? fetched.contentType;
     const decoded = decodeBody(fetched.body, contentTypeHeader);
     throwIfDeadlineElapsed(deadline);
     const requestedUse = input.requestedUse ?? "answer_with_citation";
@@ -427,21 +378,15 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     let extracted: ExtractedContent | undefined;
     let extractionError: LlmFetchError | undefined;
     let contentResult: GuardResult;
-    if (
-      fetched.contentType === "text/html" ||
-      fetched.contentType === "application/xhtml+xml"
-    ) {
+    if (fetched.contentType === "text/html" || fetched.contentType === "application/xhtml+xml") {
       const $ = loadHtml(decoded);
       throwIfDeadlineElapsed(deadline);
-      const likelyDynamic =
-        fetched.fetchMethod === "http" && isLikelyDynamicHtml($, decoded);
+      const likelyDynamic = fetched.fetchMethod === "http" && isLikelyDynamicHtml($, decoded);
       throwIfDeadlineElapsed(deadline);
       const prepared = builtinGuard.prepareHtml($, decoded);
       throwIfDeadlineElapsed(deadline);
       const extractOptions =
-        input.maxCharacters === undefined
-          ? {}
-          : { maxCharacters: input.maxCharacters };
+        input.maxCharacters === undefined ? {} : { maxCharacters: input.maxCharacters };
       try {
         extracted = extractHtmlContent($, fetched.finalUrl, extractOptions);
         throwIfDeadlineElapsed(deadline);
@@ -453,18 +398,13 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
           );
         }
       } catch (error) {
-        if (
-          !(error instanceof LlmFetchError) ||
-          error.code !== "CONTENT_INSUFFICIENT"
-        ) {
+        if (!(error instanceof LlmFetchError) || error.code !== "CONTENT_INSUFFICIENT") {
           throw error;
         }
         extractionError = error;
       }
       contentResult = builtinGuard.inspectPrepared({
-        visibleText: extracted
-          ? `${extracted.title}\n${extracted.text}`
-          : $("body").text(),
+        visibleText: extracted ? `${extracted.title}\n${extracted.text}` : $("body").text(),
         additionalSegments: prepared.segments,
         requestedUse,
         truncated: prepared.truncated,
@@ -476,22 +416,13 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
             : [],
       });
       throwIfDeadlineElapsed(deadline);
-    } else if (
-      fetched.contentType === "application/xml" ||
-      fetched.contentType === "text/xml"
-    ) {
+    } else if (fetched.contentType === "application/xml" || fetched.contentType === "text/xml") {
       const $ = loadXml(decoded);
       throwIfDeadlineElapsed(deadline);
       const visibleText = $.root().text();
       const extractOptions =
-        input.maxCharacters === undefined
-          ? {}
-          : { maxCharacters: input.maxCharacters };
-      extracted = extractPlainTextContent(
-        visibleText,
-        fetched.finalUrl,
-        extractOptions,
-      );
+        input.maxCharacters === undefined ? {} : { maxCharacters: input.maxCharacters };
+      extracted = extractPlainTextContent(visibleText, fetched.finalUrl, extractOptions);
       contentResult = builtinGuard.inspectPrepared({
         visibleText: extracted.text,
         requestedUse,
@@ -499,14 +430,8 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       throwIfDeadlineElapsed(deadline);
     } else {
       const extractOptions =
-        input.maxCharacters === undefined
-          ? {}
-          : { maxCharacters: input.maxCharacters };
-      extracted = extractPlainTextContent(
-        decoded,
-        fetched.finalUrl,
-        extractOptions,
-      );
+        input.maxCharacters === undefined ? {} : { maxCharacters: input.maxCharacters };
+      extracted = extractPlainTextContent(decoded, fetched.finalUrl, extractOptions);
       contentResult = builtinGuard.inspectPrepared({
         visibleText: extracted.text,
         requestedUse,
@@ -520,8 +445,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         ...builtinResult,
         limitations: builtinResult.limitations.filter(
           (limitation) =>
-            limitation !==
-            "External stylesheets and computed CSS visibility are not evaluated.",
+            limitation !== "External stylesheets and computed CSS visibility are not evaluated.",
         ),
       };
     }
@@ -531,10 +455,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       ? mergeGuardResults([builtinResult, extraResult])
       : builtinResult;
     input.signal?.throwIfAborted();
-    if (
-      guardResult.decision === "deny" ||
-      guardResult.decision === "require_approval"
-    ) {
+    if (guardResult.decision === "deny" || guardResult.decision === "require_approval") {
       throw new LlmFetchError(
         "GUARD_DENIED",
         "Retrieved content was withheld by the context guard.",
@@ -549,19 +470,13 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     }
     if (extractionError) throw extractionError;
     if (!extracted) {
-      throw new LlmFetchError(
-        "CONTENT_INSUFFICIENT",
-        "No readable content was extracted.",
-        {
-          url: fetched.finalUrl,
-        },
-      );
+      throw new LlmFetchError("CONTENT_INSUFFICIENT", "No readable content was extracted.", {
+        url: fetched.finalUrl,
+      });
     }
 
     const transportLimitations = fetched.limitations ?? [];
-    const limitations = [
-      ...new Set([...guardResult.limitations, ...transportLimitations]),
-    ];
+    const limitations = [...new Set([...guardResult.limitations, ...transportLimitations])];
     const assurance =
       fetched.fetchMethod === "playwright" && guardResult.assurance === "high"
         ? "medium"
@@ -580,9 +495,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       security: {
         trust: "untrusted",
         tainted: true,
-        guard: additionalGuard?.name
-          ? `builtin+${additionalGuard.name}`
-          : "builtin",
+        guard: additionalGuard?.name ? `builtin+${additionalGuard.name}` : "builtin",
         findings: guardResult.findings,
         assurance,
         decision: guardResult.decision,
@@ -600,9 +513,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     try {
       signal?.throwIfAborted();
       const availability = browserRetriever.isAvailable();
-      const result = await (signal
-        ? waitWithSignal(availability, signal)
-        : availability);
+      const result = await (signal ? waitWithSignal(availability, signal) : availability);
       return result === true;
     } catch {
       if (signal?.aborted) throw abortReason(signal);
@@ -610,50 +521,31 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     }
   }
 
-  async function readUncached(
-    input: ReadInput,
-    deadline: Deadline,
-  ): Promise<CachedDocument> {
+  async function readUncached(input: ReadInput, deadline: Deadline): Promise<CachedDocument> {
     input.signal?.throwIfAborted();
     const normalizedUrl = normalizeResultUrl(input.url);
     if (!normalizedUrl) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "A valid HTTP or HTTPS URL is required.",
-        {
-          url: input.url,
-        },
-      );
+      throw new LlmFetchError("INVALID_INPUT", "A valid HTTP or HTTPS URL is required.", {
+        url: input.url,
+      });
     }
     const render = input.render ?? defaultRender;
 
     if (render === "always") {
       if (!browserRetriever) {
-        throw new LlmFetchError(
-          "CONFIG_MISSING",
-          "Playwright retrieval is not configured.",
-          { url: normalizedUrl },
-        );
+        throw new LlmFetchError("CONFIG_MISSING", "Playwright retrieval is not configured.", {
+          url: normalizedUrl,
+        });
       }
       return processFetched(
         input,
         normalizedUrl,
-        await retrieveWith(
-          browserRetriever,
-          "playwright",
-          normalizedUrl,
-          input.signal,
-        ),
+        await retrieveWith(browserRetriever, "playwright", normalizedUrl, input.signal),
         deadline,
       );
     }
 
-    const fetched = await retrieveWith(
-      httpRetriever,
-      "http",
-      normalizedUrl,
-      input.signal,
-    );
+    const fetched = await retrieveWith(httpRetriever, "http", normalizedUrl, input.signal);
     try {
       return await processFetched(input, normalizedUrl, fetched, deadline);
     } catch (error) {
@@ -669,12 +561,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       return processFetched(
         input,
         normalizedUrl,
-        await retrieveWith(
-          browserRetriever,
-          "playwright",
-          normalizedUrl,
-          input.signal,
-        ),
+        await retrieveWith(browserRetriever, "playwright", normalizedUrl, input.signal),
         deadline,
       );
     }
@@ -725,11 +612,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         });
       }
     };
-    const document = await readInflight.run(
-      key,
-      loadDocument,
-      normalizedInput.signal,
-    );
+    const document = await readInflight.run(key, loadDocument, normalizedInput.signal);
     return documentWithSource(document, normalizedInput.source);
   }
 

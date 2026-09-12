@@ -44,9 +44,7 @@ describe("Playwright network budget", () => {
       dataLength: 20,
       encodedDataLength: 10,
     });
-    expect(failures).toEqual([
-      expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }),
-    ]);
+    expect(failures).toEqual([expect.objectContaining({ code: "RESPONSE_TOO_LARGE" })]);
   });
 
   it("fails closed on invalid browser accounting values", () => {
@@ -59,8 +57,6 @@ describe("Playwright network budget", () => {
       dataLength: Number.NaN,
       encodedDataLength: 0,
     });
-    expect(failures).toEqual([
-      expect.objectContaining({ code: "UPSTREAM_HTTP" }),
-    ]);
+    expect(failures).toEqual([expect.objectContaining({ code: "UPSTREAM_HTTP" })]);
   });
 });

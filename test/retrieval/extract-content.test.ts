@@ -20,9 +20,7 @@ function utf16Be(value: string): Uint8Array {
 
 describe("bounded extraction decoding", () => {
   it("gives a BOM precedence over a conflicting HTTP declaration", () => {
-    expect(decodeBody(utf16Be("hello"), "text/plain; charset=utf-8")).toBe(
-      "hello",
-    );
+    expect(decodeBody(utf16Be("hello"), "text/plain; charset=utf-8")).toBe("hello");
   });
 
   it("uses an HTML meta charset when the HTTP header omits one", () => {
@@ -32,36 +30,21 @@ describe("bounded extraction decoding", () => {
 
   it("does not treat data attributes as charset declarations", () => {
     const html = '<meta data-charset="shift_jis"><main>日本語の本文</main>';
-    expect(
-      decodeBody(
-        new TextEncoder().encode(html),
-        "text/html; xcharset=shift_jis",
-      ),
-    ).toBe(html);
+    expect(decodeBody(new TextEncoder().encode(html), "text/html; xcharset=shift_jis")).toBe(html);
   });
 
   it("recognizes UTF-8, UTF-16LE, Shift_JIS aliases, and http-equiv metadata", () => {
-    expect(
-      decodeBody(
-        new Uint8Array([0xef, 0xbb, 0xbf, 0x6f, 0x6b]),
-        "text/plain",
-      ),
-    ).toBe("ok");
-    expect(
-      decodeBody(new Uint8Array([0xff, 0xfe, 0x6f, 0x00, 0x6b, 0x00]), "text/plain"),
-    ).toBe("ok");
-    expect(decodeBody(new TextEncoder().encode("ascii"), "text/plain; charset=sjis")).toBe(
-      "ascii",
+    expect(decodeBody(new Uint8Array([0xef, 0xbb, 0xbf, 0x6f, 0x6b]), "text/plain")).toBe("ok");
+    expect(decodeBody(new Uint8Array([0xff, 0xfe, 0x6f, 0x00, 0x6b, 0x00]), "text/plain")).toBe(
+      "ok",
     );
-    const html =
-      '<meta http-equiv="content-type" content="text/html; charset=utf-8"><p>本文</p>';
+    expect(decodeBody(new TextEncoder().encode("ascii"), "text/plain; charset=sjis")).toBe("ascii");
+    const html = '<meta http-equiv="content-type" content="text/html; charset=utf-8"><p>本文</p>';
     expect(decodeBody(new TextEncoder().encode(html), "text/html")).toBe(html);
   });
 
   it("rejects invalid bytes for a declared encoding", () => {
-    expect(() =>
-      decodeBody(new Uint8Array([0xff]), "text/plain; charset=utf-8"),
-    ).toThrowError(
+    expect(() => decodeBody(new Uint8Array([0xff]), "text/plain; charset=utf-8")).toThrowError(
       expect.objectContaining({ code: "UNSUPPORTED_CONTENT_ENCODING" }),
     );
   });
@@ -85,17 +68,13 @@ describe("bounded extraction decoding", () => {
   });
 
   it("loads bounded XML and rejects deep XML", () => {
-    expect(loadXml("<root><item>value</item></root>").root().text()).toContain(
-      "value",
+    expect(loadXml("<root><item>value</item></root>").root().text()).toContain("value");
+    expect(() => loadXml(`${"<item>".repeat(600)}x${"</item>".repeat(600)}`)).toThrowError(
+      expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }),
     );
-    expect(() =>
-      loadXml(`${"<item>".repeat(600)}x${"</item>".repeat(600)}`),
-    ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
     expect(loadXml("<root>" + "<item/>".repeat(600) + "</root>")).toBeDefined();
     expect(() =>
-      loadXml(
-        `<script>${"<node>".repeat(600)}x${"</node>".repeat(600)}</script>`,
-      ),
+      loadXml(`<script>${"<node>".repeat(600)}x${"</node>".repeat(600)}</script>`),
     ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
   });
 
@@ -120,9 +99,10 @@ describe("bounded extraction decoding", () => {
 
   it("falls back to body text and hostname and rejects insufficient pages", () => {
     const bodyOnly = `<html><body><div>${"Readable body text. ".repeat(10)}</div></body></html>`;
-    expect(
-      extractHtmlContent(loadHtml(bodyOnly), "https://example.com/path"),
-    ).toMatchObject({ title: "example.com", truncated: false });
+    expect(extractHtmlContent(loadHtml(bodyOnly), "https://example.com/path")).toMatchObject({
+      title: "example.com",
+      truncated: false,
+    });
     expect(() =>
       extractHtmlContent(loadHtml("<html><body>tiny</body></html>"), "https://example.com/"),
     ).toThrowError(expect.objectContaining({ code: "CONTENT_INSUFFICIENT" }));
@@ -130,9 +110,9 @@ describe("bounded extraction decoding", () => {
 
   it("bounds the number of content candidates", () => {
     const html = `<html><body>${"<article>content</article>".repeat(513)}</body></html>`;
-    expect(() =>
-      extractHtmlContent(loadHtml(html), "https://example.com/"),
-    ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
+    expect(() => extractHtmlContent(loadHtml(html), "https://example.com/")).toThrowError(
+      expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }),
+    );
   });
 
   it("bounds candidates across selectors and falls back from a short article to body", () => {
@@ -140,16 +120,14 @@ describe("bounded extraction decoding", () => {
       { length: 260 },
       () => "<article>short</article><main>short</main>",
     ).join("")}</body></html>`;
-    expect(() =>
-      extractHtmlContent(loadHtml(tooManyKinds), "https://example.com/"),
-    ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
+    expect(() => extractHtmlContent(loadHtml(tooManyKinds), "https://example.com/")).toThrowError(
+      expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }),
+    );
 
-    const bodyFallback = `<html><body><article>tiny</article><div>${
-      "Useful factual body content. ".repeat(10)
-    }</div></body></html>`;
-    expect(
-      extractHtmlContent(loadHtml(bodyFallback), "https://example.com/"),
-    ).toMatchObject({
+    const bodyFallback = `<html><body><article>tiny</article><div>${"Useful factual body content. ".repeat(
+      10,
+    )}</div></body></html>`;
+    expect(extractHtmlContent(loadHtml(bodyFallback), "https://example.com/")).toMatchObject({
       text: expect.stringContaining("Useful factual body content"),
     });
   });
@@ -225,9 +203,7 @@ describe("bounded extraction decoding", () => {
   it("preserves direct candidate text that surrounds block elements", () => {
     const directText = "Direct article text remains part of the extracted result. ".repeat(4);
     const html = `<html><body><main>${directText}<p>Short paragraph.</p>${directText}</main></body></html>`;
-    expect(
-      extractHtmlContent(loadHtml(html), "https://example.com/"),
-    ).toMatchObject({
+    expect(extractHtmlContent(loadHtml(html), "https://example.com/")).toMatchObject({
       text: expect.stringContaining("Direct article text remains"),
     });
   });
@@ -240,8 +216,8 @@ describe("bounded extraction decoding", () => {
         { maxCharacters: 25 },
       ),
     ).toMatchObject({ title: "example.com", truncated: true });
-    expect(() =>
-      extractPlainTextContent("tiny", "https://example.com/"),
-    ).toThrowError(expect.objectContaining({ code: "CONTENT_INSUFFICIENT" }));
+    expect(() => extractPlainTextContent("tiny", "https://example.com/")).toThrowError(
+      expect.objectContaining({ code: "CONTENT_INSUFFICIENT" }),
+    );
   });
 });

@@ -4,9 +4,7 @@ import { readFile } from "node:fs/promises";
 const packageManifest = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
-const expected = /^npm@(\d+)\.(\d+)\.(\d+)$/u.exec(
-  packageManifest.packageManager ?? "",
-);
+const expected = /^npm@(\d+)\.(\d+)\.(\d+)$/u.exec(packageManifest.packageManager ?? "");
 if (!expected) {
   throw new Error("package.json must pin packageManager to an exact npm version.");
 }

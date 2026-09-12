@@ -5,11 +5,7 @@ import { normalizeResultUrl } from "../retrieval/url-normalizer.js";
 
 const MAX_RESULT_CANDIDATES = 1_000;
 
-const NO_RESULTS_SELECTORS = [
-  ".no-results",
-  ".results--empty",
-  "#no-results",
-];
+const NO_RESULTS_SELECTORS = [".no-results", ".results--empty", "#no-results"];
 
 const CHALLENGE_PATTERNS = [
   /DDG\.(?:deep\.)?anomalyDetectionBlock\s*\(/i,
@@ -44,11 +40,11 @@ function loadProviderHtml(html: string) {
 
 function assertNotChallenge(body: string): void {
   if (CHALLENGE_PATTERNS.some((pattern) => pattern.test(body))) {
-    throw new LlmFetchError(
-      "BOT_CHALLENGE",
-      "DuckDuckGo returned a bot challenge.",
-      { provider: "duckduckgo", retryable: true, cooldownMs: 60_000 },
-    );
+    throw new LlmFetchError("BOT_CHALLENGE", "DuckDuckGo returned a bot challenge.", {
+      provider: "duckduckgo",
+      retryable: true,
+      cooldownMs: 60_000,
+    });
   }
 }
 
@@ -112,11 +108,10 @@ function parseWebPayload(body: string): unknown[] {
         } catch {
           // Report the bounded provider parse error below.
         }
-        throw new LlmFetchError(
-          "PARSE_CHANGED",
-          "DuckDuckGo Web returned invalid result JSON.",
-          { provider: "duckduckgo", retryable: true },
-        );
+        throw new LlmFetchError("PARSE_CHANGED", "DuckDuckGo Web returned invalid result JSON.", {
+          provider: "duckduckgo",
+          retryable: true,
+        });
       }
     }
   }
@@ -176,9 +171,7 @@ export function parseDuckDuckGoHtml(html: string, limit: number): SearchHit[] {
   }
   if (hits.length > 0) return hits;
 
-  const hasNoResults = NO_RESULTS_SELECTORS.some(
-    (selector) => $(selector).length > 0,
-  );
+  const hasNoResults = NO_RESULTS_SELECTORS.some((selector) => $(selector).length > 0);
   if (hasNoResults || /no results\.?/i.test($("body").text())) return [];
 
   throw new LlmFetchError(
@@ -201,15 +194,8 @@ export function parseDuckDuckGoLite(html: string, limit: number): SearchHit[] {
     const anchor = $(element);
     const row = anchor.closest("tr");
     const snippet = snippets[index];
-    const snippetText = snippet
-      ? $(snippet).text()
-      : row.nextAll("tr").slice(0, 2).text();
-    const hit = toHit(
-      hits.length + 1,
-      anchor.text(),
-      anchor.attr("href") ?? "",
-      snippetText,
-    );
+    const snippetText = snippet ? $(snippet).text() : row.nextAll("tr").slice(0, 2).text();
+    const hit = toHit(hits.length + 1, anchor.text(), anchor.attr("href") ?? "", snippetText);
     if (!hit || seen.has(hit.url)) continue;
     seen.add(hit.url);
     hits.push({ ...hit, rank: hits.length + 1 });
@@ -225,18 +211,14 @@ export function parseDuckDuckGoLite(html: string, limit: number): SearchHit[] {
   );
 }
 
-export function extractDuckDuckGoPreloadUrl(
-  html: string,
-  expectedQuery: string,
-): URL {
+export function extractDuckDuckGoPreloadUrl(html: string, expectedQuery: string): URL {
   assertNotChallenge(html);
   const vqd = VQD_PATTERN.exec(html)?.[1];
   if (!vqd) {
-    throw new LlmFetchError(
-      "PARSE_CHANGED",
-      "DuckDuckGo bootstrap did not contain a VQD token.",
-      { provider: "duckduckgo", retryable: true },
-    );
+    throw new LlmFetchError("PARSE_CHANGED", "DuckDuckGo bootstrap did not contain a VQD token.", {
+      provider: "duckduckgo",
+      retryable: true,
+    });
   }
 
   const $ = loadProviderHtml(html);
@@ -284,10 +266,7 @@ export function extractDuckDuckGoPreloadUrl(
   return url;
 }
 
-export function parseDuckDuckGoWeb(
-  body: string,
-  limit: number,
-): SearchHit[] {
+export function parseDuckDuckGoWeb(body: string, limit: number): SearchHit[] {
   assertNotChallenge(body);
   const payload = parseWebPayload(body);
   if (payload.length > MAX_RESULT_CANDIDATES) throw tooManyResults();
@@ -302,11 +281,7 @@ export function parseDuckDuckGoWeb(
     }
     if ("n" in candidate) continue;
     const raw = candidate as Record<string, unknown>;
-    if (
-      typeof raw.t !== "string" ||
-      typeof raw.a !== "string" ||
-      typeof raw.u !== "string"
-    ) {
+    if (typeof raw.t !== "string" || typeof raw.a !== "string" || typeof raw.u !== "string") {
       invalidResult = true;
       continue;
     }

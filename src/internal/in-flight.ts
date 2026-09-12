@@ -34,9 +34,7 @@ export class InFlightMap<T> {
     }
 
     entry.waiters += 1;
-    const completion = callerSignal
-      ? waitWithSignal(entry.promise, callerSignal)
-      : entry.promise;
+    const completion = callerSignal ? waitWithSignal(entry.promise, callerSignal) : entry.promise;
     return completion.finally(() => {
       entry.waiters -= 1;
       if (entry.waiters === 0 && !entry.settled) {

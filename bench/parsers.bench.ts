@@ -1,8 +1,5 @@
-import { bench, describe } from "vitest";
-import {
-  parseDuckDuckGoHtml,
-  parseDuckDuckGoWeb,
-} from "../src/providers/duckduckgo-parser.js";
+import { test } from "vitest";
+import { parseDuckDuckGoHtml, parseDuckDuckGoWeb } from "../src/providers/duckduckgo-parser.js";
 import { extractHtmlContent, loadHtml } from "../src/retrieval/extract-content.js";
 import { createInternalBuiltinContextGuard } from "../src/security/context-guard.js";
 
@@ -29,16 +26,16 @@ const articleParagraph = `<p>${"A bounded TypeScript extraction paragraph with u
 const articleHtml = `<html><head><title>Large fixture</title></head><body><main>${articleParagraph.repeat(750)}</main></body></html>`;
 const guard = createInternalBuiltinContextGuard();
 
-describe("parsers", () => {
-  bench("DuckDuckGo 20 results", () => {
+test("parsers", async ({ bench }) => {
+  await bench("DuckDuckGo 20 results", () => {
     parseDuckDuckGoHtml(duckHtml, 20);
-  });
+  }).run();
 
-  bench("DuckDuckGo signed Web 20 results", () => {
+  await bench("DuckDuckGo signed Web 20 results", () => {
     parseDuckDuckGoWeb(duckWeb, 20);
-  });
+  }).run();
 
-  bench("HTML extraction with shared guard DOM", () => {
+  await bench("HTML extraction with shared guard DOM", () => {
     const $ = loadHtml(articleHtml);
     const prepared = guard.prepareHtml($, articleHtml);
     const extracted = extractHtmlContent($, "https://example.com/fixture", {
@@ -49,5 +46,5 @@ describe("parsers", () => {
       additionalSegments: prepared.segments,
       requestedUse: "answer_with_citation",
     });
-  });
+  }).run();
 });

@@ -1,10 +1,7 @@
 import type { ContentGuard, SearchProvider } from "./contracts.js";
 import { LlmFetchError } from "./errors.js";
 import type { ContentRetriever } from "./retrieval/content-retriever.js";
-import type {
-  SafeHttpFetcher,
-  SafeHttpFetcherOptions,
-} from "./retrieval/http-fetcher.js";
+import type { SafeHttpFetcher, SafeHttpFetcherOptions } from "./retrieval/http-fetcher.js";
 import type { BuiltinContextGuardOptions } from "./security/context-guard.js";
 import {
   READABLE_CONTENT_TYPES,
@@ -51,9 +48,7 @@ export interface ValidatedClientOptions {
   searchProvider?: SearchProvider;
 }
 
-export function validateClientOptions(
-  options: LlmFetchOptions,
-): ValidatedClientOptions {
+export function validateClientOptions(options: LlmFetchOptions): ValidatedClientOptions {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     throw new LlmFetchError("INVALID_INPUT", "Client options must be an object.");
   }
@@ -72,9 +67,7 @@ export function validateClientOptions(
   }
   if (
     options.cache !== undefined &&
-    (!options.cache ||
-      typeof options.cache !== "object" ||
-      Array.isArray(options.cache))
+    (!options.cache || typeof options.cache !== "object" || Array.isArray(options.cache))
   ) {
     throw new LlmFetchError("INVALID_INPUT", "cache must be an object.");
   }
@@ -119,10 +112,7 @@ export function validateClientOptions(
       options.browser.defaultRender !== undefined &&
       !RENDER_MODES.has(options.browser.defaultRender)
     ) {
-      throw new LlmFetchError(
-        "INVALID_INPUT",
-        "browser.defaultRender is invalid.",
-      );
+      throw new LlmFetchError("INVALID_INPUT", "browser.defaultRender is invalid.");
     }
   }
   if (
@@ -140,14 +130,10 @@ export function validateClientOptions(
 
   const cacheEnabled = options.cache?.enabled ?? true;
   if (typeof cacheEnabled !== "boolean") {
-    throw new LlmFetchError(
-      "INVALID_INPUT",
-      "cache.enabled must be a boolean.",
-    );
+    throw new LlmFetchError("INVALID_INPUT", "cache.enabled must be a boolean.");
   }
   const browserRetriever = options.browser?.retriever;
-  const defaultRender =
-    options.browser?.defaultRender ?? (browserRetriever ? "auto" : "never");
+  const defaultRender = options.browser?.defaultRender ?? (browserRetriever ? "auto" : "never");
   return {
     cacheEnabled,
     maxEntries: validateNonNegativeInteger(
@@ -177,12 +163,7 @@ export function validateClientOptions(
       1,
       300_000,
     ),
-    readTimeoutMs: integerInRange(
-      options.readTimeoutMs ?? 15_000,
-      "readTimeoutMs",
-      1,
-      300_000,
-    ),
+    readTimeoutMs: integerInRange(options.readTimeoutMs ?? 15_000, "readTimeoutMs", 1, 300_000),
     additionalGuardTimeoutMs: integerInRange(
       options.additionalGuardTimeoutMs ?? 5_000,
       "additionalGuardTimeoutMs",
@@ -191,9 +172,7 @@ export function validateClientOptions(
     ),
     ...(browserRetriever ? { browserRetriever } : {}),
     defaultRender,
-    ...(options.additionalGuard
-      ? { additionalGuard: options.additionalGuard }
-      : {}),
+    ...(options.additionalGuard ? { additionalGuard: options.additionalGuard } : {}),
     ...(options.search ? { searchProvider: options.search } : {}),
   };
 }

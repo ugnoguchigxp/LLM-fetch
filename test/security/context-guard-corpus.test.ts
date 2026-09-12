@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBuiltinContextGuard } from "../../src/security/context-guard.js";
-import {
-  attackCorpus,
-  benignCorpus,
-} from "../fixtures/context-guard-corpus.js";
+import { attackCorpus, benignCorpus } from "../fixtures/context-guard-corpus.js";
 
 const source = { kind: "web" as const, trust: "untrusted" as const };
 const decisionOrder = {
@@ -33,14 +30,14 @@ describe("Context Guard release corpus", () => {
         decisionOrder[minimum],
       );
       expect(
-        result.findings.some(
-          (finding) => finding.category === fixture.expectedFindingCategory,
-        ),
+        result.findings.some((finding) => finding.category === fixture.expectedFindingCategory),
         `${fixture.name}: ${fixture.expectedFindingCategory}`,
       ).toBe(true);
     }
     expect(attackCorpus.length).toBeGreaterThanOrEqual(100);
-    expect(new Set(attackCorpus.map((fixture) => fixture.seedName)).size).toBeGreaterThanOrEqual(30);
+    expect(new Set(attackCorpus.map((fixture) => fixture.seedName)).size).toBeGreaterThanOrEqual(
+      30,
+    );
   });
 
   it("keeps benign denial and approval rates within the release gate", async () => {
@@ -57,16 +54,14 @@ describe("Context Guard release corpus", () => {
     );
     for (const [index, result] of results.entries()) {
       const fixture = benignCorpus[index];
-      expect(
-        fixture?.allowedDecisions?.includes(result.decision),
-        fixture?.name,
-      ).toBe(true);
+      expect(fixture?.allowedDecisions?.includes(result.decision), fixture?.name).toBe(true);
     }
     expect(benignCorpus.length).toBeGreaterThanOrEqual(100);
-    expect(new Set(benignCorpus.map((fixture) => fixture.seedName)).size).toBeGreaterThanOrEqual(25);
+    expect(new Set(benignCorpus.map((fixture) => fixture.seedName)).size).toBeGreaterThanOrEqual(
+      25,
+    );
     const approvalRate =
-      results.filter((result) => result.decision === "require_approval").length /
-      results.length;
+      results.filter((result) => result.decision === "require_approval").length / results.length;
     expect(approvalRate).toBeLessThanOrEqual(0.05);
   });
 });

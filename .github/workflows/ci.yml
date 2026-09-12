@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20.19.0, 22, 24]
+        node: [22.18.0, 24]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bun: [1.3.14, 1.4.0]
+        bun: [1.4.0]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -106,7 +106,7 @@ jobs:
             --workdir /work \
             --env HOME=/tmp \
             --env LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 \
-            mcr.microsoft.com/playwright:v1.62.1-noble \
+            mcr.microsoft.com/playwright:v1.63.0-noble \
             /bin/bash -lc \
             'npm ci && npx vitest run test/playwright/integration.test.ts'
 

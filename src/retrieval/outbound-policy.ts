@@ -16,10 +16,7 @@ function parseIpv4(address: string): [number, number, number, number] | null {
   if (
     !octets.every(
       (octet, index) =>
-        Number.isInteger(octet) &&
-        octet >= 0 &&
-        octet <= 255 &&
-        String(octet) === parts[index],
+        Number.isInteger(octet) && octet >= 0 && octet <= 255 && String(octet) === parts[index],
     )
   ) {
     return null;

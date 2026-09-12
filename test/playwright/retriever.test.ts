@@ -9,17 +9,16 @@ describe("Playwright retriever lifecycle", () => {
     expect(() => playwrightRetriever({ userAgent: "invalid\r\nheader" })).toThrowError(
       expect.objectContaining({ code: "INVALID_INPUT" }),
     );
-    expect(() =>
-      playwrightRetriever({ userAgent: 123 as never }),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+    expect(() => playwrightRetriever({ userAgent: 123 as never })).toThrowError(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
   });
 
   it("validates retrieval input before DNS or browser startup", async () => {
     const retriever = playwrightRetriever();
-    await expect(retriever.retrieve(
-      "https://example.com/",
-      { signal: {} as AbortSignal },
-    )).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      retriever.retrieve("https://example.com/", { signal: {} as AbortSignal }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await retriever.close?.();
   });
 

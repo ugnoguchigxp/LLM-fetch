@@ -56,12 +56,7 @@ export type SecurityFindingCategory =
   | "low_trust_attribute"
   | "benign_mention";
 
-export type SecurityFindingSeverity =
-  | "info"
-  | "low"
-  | "medium"
-  | "high"
-  | "critical";
+export type SecurityFindingSeverity = "info" | "low" | "medium" | "high" | "critical";
 
 export type SecurityFindingLocation =
   | "visible"
@@ -81,11 +76,7 @@ export interface SecurityFinding {
   segmentHash: string;
 }
 
-export type GuardDecision =
-  | "allow"
-  | "allow_with_warning"
-  | "require_approval"
-  | "deny";
+export type GuardDecision = "allow" | "allow_with_warning" | "require_approval" | "deny";
 
 export interface GuardResult {
   findings: SecurityFinding[];

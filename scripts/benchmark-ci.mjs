@@ -23,18 +23,14 @@ function median(values) {
 
 const firstResults = runs[0]?.results ?? [];
 const results = firstResults.map((first) => {
-  const matching = runs.map((run) =>
-    run.results.find((result) => result.name === first.name),
-  );
+  const matching = runs.map((run) => run.results.find((result) => result.name === first.name));
   if (matching.some((result) => !result)) {
     throw new Error(`Benchmark worker omitted ${first.name}.`);
   }
   const p50Runs = matching.map((result) => result.p50Ms);
   const p95Runs = matching.map((result) => result.p95Ms);
   const p99Runs = matching.map((result) => result.p99Ms);
-  const overThresholdRuns = p95Runs.filter(
-    (value) => value > first.thresholdMs,
-  ).length;
+  const overThresholdRuns = p95Runs.filter((value) => value > first.thresholdMs).length;
   const result = {
     name: first.name,
     processes: runCount,

@@ -33,29 +33,19 @@ export function createSearchAndRead({
   search,
   read,
   timeoutMs,
-}: SearchAndReadDependencies): (
-  input: SearchAndReadInput,
-) => Promise<SearchAndReadResult> {
-  return async function searchAndRead(
-    input: SearchAndReadInput,
-  ): Promise<SearchAndReadResult> {
+}: SearchAndReadDependencies): (input: SearchAndReadInput) => Promise<SearchAndReadResult> {
+  return async function searchAndRead(input: SearchAndReadInput): Promise<SearchAndReadResult> {
     assertOpen();
     const startedAt = performance.now();
     const normalizedSearch = normalizeSearchInput(input);
     const concurrency = input.concurrency ?? 4;
     integerInRange(concurrency, "concurrency", 1, 16);
-    const perHostConcurrency =
-      input.perHostConcurrency ?? Math.min(2, concurrency);
+    const perHostConcurrency = input.perHostConcurrency ?? Math.min(2, concurrency);
     integerInRange(perHostConcurrency, "perHostConcurrency", 1, concurrency);
     const maxCharactersPerDocument =
       input.maxCharactersPerDocument === undefined
         ? undefined
-        : integerInRange(
-            input.maxCharactersPerDocument,
-            "maxCharactersPerDocument",
-            200,
-            100_000,
-          );
+        : integerInRange(input.maxCharactersPerDocument, "maxCharactersPerDocument", 200, 100_000);
     const requestedUse = optionalRequestedUse(input.requestedUse);
     if (
       input.render !== undefined &&
@@ -86,9 +76,7 @@ export function createSearchAndRead({
           nextIndex += 1;
           const hit = hits[index];
           if (!hit) return;
-          const hostname = new URL(hit.url).hostname
-            .toLowerCase()
-            .replace(/\.$/u, "");
+          const hostname = new URL(hit.url).hostname.toLowerCase().replace(/\.$/u, "");
           let hostSemaphore = hostSemaphores.get(hostname);
           if (!hostSemaphore) {
             hostSemaphore = new Semaphore(perHostConcurrency);
@@ -144,10 +132,7 @@ export function createSearchAndRead({
             });
             failures.push({
               url: hit.url,
-              kind:
-                normalizedError.code === "TIMEOUT"
-                  ? "page_timeout"
-                  : "page_failure",
+              kind: normalizedError.code === "TIMEOUT" ? "page_timeout" : "page_failure",
               error: normalizedError,
             });
           }
@@ -155,10 +140,7 @@ export function createSearchAndRead({
       };
 
       await Promise.all(
-        Array.from(
-          { length: Math.min(concurrency, hits.length) },
-          async () => worker(),
-        ),
+        Array.from({ length: Math.min(concurrency, hits.length) }, async () => worker()),
       );
       if (signal.aborted && !normalizedSearch.signal?.aborted) timedOut = true;
       if (timedOut) {
@@ -166,18 +148,13 @@ export function createSearchAndRead({
           failures.push({
             url: hit.url,
             kind: "not_started",
-            error: timeoutError(
-              "The result was not started before the overall deadline.",
-              hit.url,
-            ),
+            error: timeoutError("The result was not started before the overall deadline.", hit.url),
           });
         }
       }
       documents.sort((a, b) => (a.source?.rank ?? 0) - (b.source?.rank ?? 0));
       const rankByUrl = new Map(hits.map((hit) => [hit.url, hit.rank]));
-      failures.sort(
-        (a, b) => (rankByUrl.get(a.url) ?? 0) - (rankByUrl.get(b.url) ?? 0),
-      );
+      failures.sort((a, b) => (rankByUrl.get(a.url) ?? 0) - (rankByUrl.get(b.url) ?? 0));
 
       return {
         hits,
@@ -191,11 +168,7 @@ export function createSearchAndRead({
         throw abortReason(normalizedSearch.signal);
       }
       if (signal.aborted && isTimeoutReason(signal.reason)) {
-        throw timeoutError(
-          "Search and read exceeded its deadline.",
-          undefined,
-          error,
-        );
+        throw timeoutError("Search and read exceeded its deadline.", undefined, error);
       }
       throw error;
     }

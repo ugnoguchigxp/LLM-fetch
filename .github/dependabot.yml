@@ -8,6 +8,12 @@ updates:
     groups:
       development-dependencies:
         dependency-type: development
+        update-types: ["minor", "patch"]
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
     schedule:

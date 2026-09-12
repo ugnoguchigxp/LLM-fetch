@@ -107,9 +107,7 @@ export function assertHtmlSourceWithinLimits(
     if (nodeCount > maxNodes) {
       throw limitError("The HTML response exceeded the node limit.");
     }
-    const selfClosing = xmlMode
-      ? /\/\s*$/u.test(token)
-      : VOID_ELEMENTS.has(name);
+    const selfClosing = xmlMode ? /\/\s*$/u.test(token) : VOID_ELEMENTS.has(name);
     if (!selfClosing) {
       stack.push(name);
       if (stack.length > maxDepth) {

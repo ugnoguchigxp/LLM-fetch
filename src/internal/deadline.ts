@@ -8,12 +8,7 @@ export interface Deadline {
 function timeoutSignal(timeoutMs: number): AbortSignal {
   const controller = new AbortController();
   const timer = setTimeout(() => {
-    controller.abort(
-      new DOMException(
-        "The operation was aborted due to timeout",
-        "TimeoutError",
-      ),
-    );
+    controller.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
   }, timeoutMs);
   timer.unref();
   return controller.signal;
@@ -32,9 +27,7 @@ export function createDeadline(timeoutMs: number): Deadline {
     signal(external?: AbortSignal) {
       const remaining = Math.max(1, Math.ceil(monotonicDeadline - performance.now()));
       const deadlineSignal = timeoutSignal(remaining);
-      return external
-        ? AbortSignal.any([external, deadlineSignal])
-        : deadlineSignal;
+      return external ? AbortSignal.any([external, deadlineSignal]) : deadlineSignal;
     },
   };
 }

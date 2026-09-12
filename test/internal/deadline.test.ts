@@ -11,10 +11,7 @@ describe("Deadline", () => {
 
     let watchdogTimer!: ReturnType<typeof setTimeout>;
     const watchdog = new Promise<never>((_resolve, reject) => {
-      watchdogTimer = setTimeout(
-        () => reject(new Error("deadline watchdog elapsed")),
-        250,
-      );
+      watchdogTimer = setTimeout(() => reject(new Error("deadline watchdog elapsed")), 250);
     });
     const neverSettles = new Promise<never>(() => undefined);
 

@@ -1,9 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createBuiltinContextGuard } from "../dist/index.js";
-import {
-  attackCorpus,
-  benignCorpus,
-} from "../test/fixtures/context-guard-corpus.js";
+import { attackCorpus, benignCorpus } from "../test/fixtures/context-guard-corpus.js";
 
 const source = { kind: "web", trust: "untrusted" };
 const decisionOrder = {
@@ -39,14 +36,10 @@ export async function createGuardCorpusReport() {
   });
   const categoryMismatches = attacks.filter(
     ({ fixture, result }) =>
-      !result.findings.some(
-        (finding) => finding.category === fixture.expectedFindingCategory,
-      ),
+      !result.findings.some((finding) => finding.category === fixture.expectedFindingCategory),
   );
   const benignDenied = benign.filter(({ result }) => result.decision === "deny");
-  const benignApproval = benign.filter(
-    ({ result }) => result.decision === "require_approval",
-  );
+  const benignApproval = benign.filter(({ result }) => result.decision === "require_approval");
   const report = {
     attack: {
       total: attacks.length,

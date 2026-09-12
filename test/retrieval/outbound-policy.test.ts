@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isPublicIpAddress,
-  resolveSafeOutboundUrl,
-} from "../../src/retrieval/outbound-policy.js";
+import { isPublicIpAddress, resolveSafeOutboundUrl } from "../../src/retrieval/outbound-policy.js";
 
 describe("outbound URL policy", () => {
   it.each([
@@ -33,12 +30,9 @@ describe("outbound URL policy", () => {
     expect(isPublicIpAddress(address)).toBe(false);
   });
 
-  it.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])(
-    "allows public address %s",
-    (address) => {
-      expect(isPublicIpAddress(address)).toBe(true);
-    },
-  );
+  it.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])("allows public address %s", (address) => {
+    expect(isPublicIpAddress(address)).toBe(true);
+  });
 
   it.each([
     "file:///etc/passwd",
@@ -91,7 +85,8 @@ describe("outbound URL policy", () => {
         Array.from({ length: 65 }, () => ({
           address: "93.184.216.34",
           family: 4 as const,
-        }))),
+        })),
+      ),
     ).rejects.toMatchObject({ code: "UNSAFE_URL" });
   });
 

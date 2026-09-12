@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  SafeFetchResult,
-  SearchProvider,
-} from "../src/index.js";
+import type { SafeFetchResult, SearchProvider } from "../src/index.js";
 import { createLlmFetch } from "../src/index.js";
 import type { ContentGuard } from "../src/index.js";
 
@@ -33,9 +30,9 @@ describe("llm-fetch client vertical flow", () => {
       fetcher: vi.fn(async (url: string) => fetched(url, ARTICLE)),
     });
 
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).resolves.toMatchObject({ title: "Fast TypeScript Retrieval" });
+    await expect(client.read({ url: "https://example.com/article" })).resolves.toMatchObject({
+      title: "Fast TypeScript Retrieval",
+    });
     await expect(client.search({ query: "missing provider" })).rejects.toMatchObject({
       code: "CONFIG_MISSING",
     });
@@ -126,12 +123,8 @@ describe("llm-fetch client vertical flow", () => {
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]?.error.code).toBe("GUARD_DENIED");
     expect(result.failures[0]?.error.guardDecision).toBe("require_approval");
-    expect(result.failures[0]?.error.warningCategories).toContain(
-      "hidden_instruction",
-    );
-    expect(JSON.stringify(result.failures[0]?.error)).not.toContain(
-      "ignore previous instructions",
-    );
+    expect(result.failures[0]?.error.warningCategories).toContain("hidden_instruction");
+    expect(JSON.stringify(result.failures[0]?.error)).not.toContain("ignore previous instructions");
   });
 
   it("returns completed documents when the overall deadline interrupts later work", async () => {
@@ -175,9 +168,7 @@ describe("llm-fetch client vertical flow", () => {
     expect(result.timedOut).toBe(true);
     expect(result.documents).toHaveLength(1);
     expect(result.failures).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "overall_timeout" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ kind: "overall_timeout" })]),
     );
   });
 
@@ -261,9 +252,9 @@ describe("llm-fetch client vertical flow", () => {
       fetcher: vi.fn(async (url: string) => fetched(url, nested)),
       readTimeoutMs: 100,
     });
-    await expect(
-      client.read({ url: "https://example.com/deep" }),
-    ).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
+    await expect(client.read({ url: "https://example.com/deep" })).rejects.toMatchObject({
+      code: "RESPONSE_TOO_LARGE",
+    });
   });
 
   it("guards the returned document title as well as its body", async () => {
@@ -282,9 +273,7 @@ describe("llm-fetch client vertical flow", () => {
       fetcher: vi.fn(async (url: string) => fetched(url, injectedTitle)),
     });
 
-    await expect(
-      client.read({ url: "https://example.com/title" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/title" })).rejects.toMatchObject({
       code: "GUARD_DENIED",
     });
   });
@@ -350,9 +339,7 @@ describe("llm-fetch client vertical flow", () => {
       additionalGuard,
     });
 
-    await expect(
-      client.read({ url: "https://example.com/injected" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/injected" })).rejects.toMatchObject({
       code: "GUARD_DENIED",
     });
   });
@@ -375,9 +362,7 @@ describe("llm-fetch client vertical flow", () => {
       additionalGuard,
     });
 
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/article" })).rejects.toMatchObject({
       code: "GUARD_FAILED",
     });
   });
@@ -466,22 +451,20 @@ describe("llm-fetch client vertical flow", () => {
         return [];
       },
     };
-    const fetcher = vi.fn(
-      async (url: string, input: { signal?: AbortSignal } = {}) => {
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(resolve, 15);
-          input.signal?.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              reject(input.signal?.reason);
-            },
-            { once: true },
-          );
-        });
-        return fetched(url, ARTICLE);
-      },
-    );
+    const fetcher = vi.fn(async (url: string, input: { signal?: AbortSignal } = {}) => {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 15);
+        input.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(input.signal?.reason);
+          },
+          { once: true },
+        );
+      });
+      return fetched(url, ARTICLE);
+    });
     const client = createLlmFetch({ search: provider, fetcher });
     const firstController = new AbortController();
     const secondController = new AbortController();
@@ -532,29 +515,21 @@ describe("llm-fetch client vertical flow", () => {
         return [];
       },
     };
-    const fetcher = vi.fn(
-      async (_url: string, input: { signal?: AbortSignal } = {}) => {
-        await new Promise<void>((_resolve, reject) => {
-          input.signal?.addEventListener(
-            "abort",
-            () => reject(input.signal?.reason),
-            {
-              once: true,
-            },
-          );
+    const fetcher = vi.fn(async (_url: string, input: { signal?: AbortSignal } = {}) => {
+      await new Promise<void>((_resolve, reject) => {
+        input.signal?.addEventListener("abort", () => reject(input.signal?.reason), {
+          once: true,
         });
-        return fetched("https://example.com/article", ARTICLE);
-      },
-    );
+      });
+      return fetched("https://example.com/article", ARTICLE);
+    });
     const client = createLlmFetch({
       search: provider,
       fetcher,
       readTimeoutMs: 5,
     });
 
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({
+    await expect(client.read({ url: "https://example.com/article" })).rejects.toMatchObject({
       code: "TIMEOUT",
       retryable: true,
     });
@@ -603,12 +578,12 @@ describe("llm-fetch client vertical flow", () => {
       search: { name: "fixture", search },
       fetcher: vi.fn(),
     });
-    await expect(
-      client.search({ query: "valid", language: "japanese" }),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(
-      client.search({ query: "valid", region: "JPN" }),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(client.search({ query: "valid", language: "japanese" })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+    await expect(client.search({ query: "valid", region: "JPN" })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
     await expect(
       client.search({ query: "valid", locale: "ja-JP", language: "ja" }),
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
@@ -634,9 +609,9 @@ describe("llm-fetch client vertical flow", () => {
         retrieval: { allowedContentTypes: "text/html" as never },
       }),
     ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
-    expect(() =>
-      createLlmFetch({ search: null as never }),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+    expect(() => createLlmFetch({ search: null as never })).toThrowError(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
 
     const client = createLlmFetch({
       fetcher: vi.fn(async (url: string) => ({
@@ -644,9 +619,9 @@ describe("llm-fetch client vertical flow", () => {
         finalUrl: "http://127.0.0.1/private",
       })),
     });
-    await expect(
-      client.read({ url: "https://example.com/article" }),
-    ).rejects.toMatchObject({ code: "UPSTREAM_HTTP" });
+    await expect(client.read({ url: "https://example.com/article" })).rejects.toMatchObject({
+      code: "UPSTREAM_HTTP",
+    });
   });
 
   it("rejects malformed provider results at the public boundary", async () => {

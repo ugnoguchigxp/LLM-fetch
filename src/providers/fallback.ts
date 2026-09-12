@@ -1,8 +1,4 @@
-import type {
-  SearchInput,
-  SearchProvider,
-  SearchProviderHit,
-} from "../contracts.js";
+import type { SearchInput, SearchProvider, SearchProviderHit } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
 
 function hasControlCharacters(value: string): boolean {
@@ -15,10 +11,7 @@ function hasControlCharacters(value: string): boolean {
 
 export function fallbackSearch(providers: readonly SearchProvider[]): SearchProvider {
   if (!Array.isArray(providers) || providers.length === 0) {
-    throw new LlmFetchError(
-      "CONFIG_MISSING",
-      "fallbackSearch requires at least one provider.",
-    );
+    throw new LlmFetchError("CONFIG_MISSING", "fallbackSearch requires at least one provider.");
   }
   if (providers.length > 10) {
     throw new LlmFetchError("INVALID_INPUT", "fallbackSearch supports at most 10 providers.");
