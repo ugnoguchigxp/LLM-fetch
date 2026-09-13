@@ -5,6 +5,7 @@ import type {
   SecurityFindingSeverity,
 } from "../contracts.js";
 import type { ContentSegment } from "./html-segments.js";
+import { matchDirective, textUnits, type RuleMatch } from "./directive-context.js";
 import { normalizeForScan } from "./normalize.js";
 
 interface DetectionRule {
@@ -12,6 +13,7 @@ interface DetectionRule {
   severity: SecurityFindingSeverity;
   reason: string;
   all: RegExp[];
+  actionIndex?: 0 | 1;
 }
 
 const RULES: readonly DetectionRule[] = [
@@ -34,6 +36,7 @@ const RULES: readonly DetectionRule[] = [
   },
   {
     category: "secret_exfiltration",
+    actionIndex: 1,
     severity: "critical",
     reason: "Content requests disclosure or transfer of secrets.",
     all: [
@@ -43,6 +46,7 @@ const RULES: readonly DetectionRule[] = [
   },
   {
     category: "tool_invocation",
+    actionIndex: 1,
     severity: "high",
     reason: "Content instructs the model to invoke or execute a tool.",
     all: [
@@ -52,6 +56,7 @@ const RULES: readonly DetectionRule[] = [
   },
   {
     category: "external_send",
+    actionIndex: 0,
     severity: "critical",
     reason: "Content requests transmission to an external destination.",
     all: [
@@ -61,6 +66,7 @@ const RULES: readonly DetectionRule[] = [
   },
   {
     category: "memory_write",
+    actionIndex: 0,
     severity: "high",
     reason: "Content requests a persistent memory change.",
     all: [
@@ -70,6 +76,7 @@ const RULES: readonly DetectionRule[] = [
   },
   {
     category: "policy_override",
+    actionIndex: 1,
     severity: "critical",
     reason: "Content requests a policy or rule change.",
     all: [
@@ -130,6 +137,8 @@ function findingFor(
   segment: ContentSegment,
   techniques: string[],
   profile: "balanced" | "strict",
+  match: RuleMatch,
+  variantIndex: number,
 ): SecurityFinding {
   const hiddenLocation = ["hidden", "comment", "template", "meta"].includes(segment.location);
   const attributeLocation = segment.location === "attribute";
@@ -152,7 +161,7 @@ function findingFor(
       0.72 + (hiddenLocation ? 0.2 : attributeLocation ? 0.1 : 0) - (benign ? 0.2 : 0),
     ),
     location: segment.location,
-    reason: `${rule.reason}${hiddenLocation ? ` Detected in ${segment.location} content.` : ""}`,
+    reason: `${rule.reason}${hiddenLocation ? ` Detected in ${segment.location} content.` : ""} Rule ${rule.category}; variant ${variantIndex}; UTF-16 range [${match.start}, ${match.end}).`,
     techniques: [...new Set(techniques)],
     segmentHash: hashSegment(segment.text),
   };
@@ -216,14 +225,39 @@ export function scanSegments(
     }
     let segmentMatchedRule = false;
 
-    for (const variant of normalizeForScan(text, {
+    for (const [variantIndex, variant] of normalizeForScan(text, {
       maxInputCharacters: remaining,
       maxDecodedCandidates: 32,
-    })) {
+    }).entries()) {
+      let units: ReturnType<typeof textUnits> | undefined;
       for (const rule of RULES) {
         if (!rule.all.every((pattern) => pattern.test(variant.text))) continue;
+        let match: RuleMatch | undefined;
+        if (rule.actionIndex !== undefined) {
+          units ??= textUnits(variant.text);
+          match = matchDirective(
+            units,
+            rule.all[rule.actionIndex]!,
+            rule.all[1 - rule.actionIndex]!,
+            rule.category === "secret_exfiltration",
+          );
+        } else {
+          const matches = rule.all.map((pattern) => pattern.exec(variant.text)!);
+          match = {
+            start: Math.min(...matches.map((item) => item.index)),
+            end: Math.max(...matches.map((item) => item.index + item[0].length)),
+          };
+        }
+        if (!match) continue;
         segmentMatchedRule = true;
-        const finding = findingFor(rule, { ...segment, text }, variant.techniques, options.profile);
+        const finding = findingFor(
+          rule,
+          { ...segment, text },
+          variant.techniques,
+          options.profile,
+          match,
+          variantIndex,
+        );
         const key = `${finding.category}:${rule.category}:${finding.location}:${finding.segmentHash}`;
         if (keys.has(key)) continue;
         keys.add(key);

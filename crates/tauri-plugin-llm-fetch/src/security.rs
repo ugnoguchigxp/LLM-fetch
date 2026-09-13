@@ -1,3 +1,4 @@
+use crate::security_directive::{compile, match_directive, DirectiveRule};
 use crate::security_normalize::normalize_for_scan;
 use crate::{
     contracts::{
@@ -9,6 +10,7 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 const MAX_FINDINGS: usize = 128;
 
@@ -303,6 +305,26 @@ const RULES: &[Rule] = &[
     },
 ];
 
+static DIRECTIVES: LazyLock<Vec<Option<DirectiveRule>>> = LazyLock::new(|| {
+    RULES
+        .iter()
+        .map(|rule| {
+            let action_index = match rule.category {
+                SecurityFindingCategory::SecretExfiltration
+                | SecurityFindingCategory::ToolInvocation
+                | SecurityFindingCategory::PolicyOverride => 1,
+                SecurityFindingCategory::ExternalSend | SecurityFindingCategory::MemoryWrite => 0,
+                _ => return None,
+            };
+            Some(compile(
+                rule.groups[action_index],
+                rule.groups[1 - action_index],
+                matches!(rule.category, SecurityFindingCategory::SecretExfiltration),
+            ))
+        })
+        .collect()
+});
+
 pub struct SecurityInspection {
     pub result: SecurityResult,
     pub truncation_reasons: Vec<TruncationReason>,
@@ -476,9 +498,9 @@ fn scan_segment(
     let hash = format!("{:x}", Sha256::digest(selected.as_bytes()));
     let mut keys = HashSet::new();
     let mut matched = false;
-    for variant in normalize_for_scan(&selected) {
+    for (variant_index, variant) in normalize_for_scan(&selected).into_iter().enumerate() {
         let normalized = variant.text.to_lowercase();
-        for rule in RULES {
+        for (rule_index, rule) in RULES.iter().enumerate() {
             if findings.len() >= MAX_FINDINGS {
                 break;
             }
@@ -489,6 +511,14 @@ fn scan_segment(
             {
                 continue;
             }
+            let evidence = if let Some(directive) = &DIRECTIVES[rule_index] {
+                let Some(range) = match_directive(directive, &variant.text) else {
+                    continue;
+                };
+                Some(range)
+            } else {
+                None
+            };
             let category = if hidden {
                 SecurityFindingCategory::HiddenInstruction
             } else if attribute {
@@ -524,14 +554,27 @@ fn scan_segment(
                     - if benign { 0.2 } else { 0.0 })
                 .min(0.99_f32),
                 location: location.clone(),
-                reason: if hidden {
-                    format!(
-                        "{} Detected in {} content.",
-                        rule.reason,
-                        location_name(&location)
-                    )
-                } else {
-                    rule.reason.into()
+                reason: {
+                    let mut reason = if hidden {
+                        format!(
+                            "{} Detected in {} content.",
+                            rule.reason,
+                            location_name(&location)
+                        )
+                    } else {
+                        rule.reason.into()
+                    };
+                    if let Some((start, end)) = evidence {
+                        let name = serde_json::to_value(&rule.category).unwrap();
+                        reason.push_str(&format!(
+                            " Rule {}; variant {}; UTF-16 range [{}, {}).",
+                            name.as_str().unwrap(),
+                            variant_index,
+                            variant.text[..start].encode_utf16().count(),
+                            variant.text[..end].encode_utf16().count()
+                        ));
+                    }
+                    reason
                 },
                 techniques: variant.techniques.clone(),
                 segment_hash: hash[..16].into(),

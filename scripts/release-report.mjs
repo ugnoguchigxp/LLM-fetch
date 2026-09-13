@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createGuardCorpusReport } from "./guard-corpus-report.mjs";
@@ -24,17 +26,26 @@ const vitestBin = vitestManifest.bin?.vitest;
 if (typeof vitestBin !== "string" || !vitestBin) {
   throw new Error("Vitest executable metadata is missing.");
 }
-const testRun = await execFileAsync(
-  process.execPath,
-  [
-    fileURLToPath(new URL(vitestBin, new URL("node_modules/vitest/", projectRoot))),
-    "run",
-    "--reporter=json",
-    "--silent",
-  ],
-  { cwd: projectRoot, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 },
-);
-const testReport = JSON.parse(testRun.stdout);
+const testOutputDirectory = await mkdtemp(join(tmpdir(), "llm-fetch-test-report-"));
+let testReport;
+try {
+  const outputFile = join(testOutputDirectory, "tests.json");
+  await execFileAsync(
+    process.execPath,
+    [
+      fileURLToPath(new URL(vitestBin, new URL("node_modules/vitest/", projectRoot))),
+      "run",
+      "--reporter=json",
+      "--silent",
+      "--outputFile",
+      outputFile,
+    ],
+    { cwd: projectRoot, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 },
+  );
+  testReport = JSON.parse(await readFile(outputFile, "utf8"));
+} finally {
+  await rm(testOutputDirectory, { recursive: true, force: true });
+}
 
 const [{ stdout: commit }, { stdout: worktreeStatus }] = await Promise.all([
   execFileAsync("git", ["rev-parse", "HEAD"], {

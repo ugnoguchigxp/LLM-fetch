@@ -7,6 +7,7 @@ mod manager;
 mod network;
 mod platform;
 mod security;
+mod security_directive;
 mod security_normalize;
 mod session;
 mod webview;

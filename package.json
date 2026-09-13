@@ -91,7 +91,8 @@
     "verify:publint": "npm run build && publint",
     "verify:release-report": "node scripts/release-report.mjs",
     "verify:rust-guard-fixtures": "npm run build && node scripts/export-rust-guard-fixtures.mjs --check",
-    "verify:types": "attw --pack ."
+    "verify:types": "attw --pack .",
+    "verify:guard-e2e": "npm run build && node --enable-source-maps scripts/guard-e2e.mjs"
   },
   "dependencies": {
     "@types/node": "^24.13.4",

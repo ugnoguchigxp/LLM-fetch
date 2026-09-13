@@ -2,7 +2,14 @@
 
 All notable changes to this project are documented here. Versions follow Semantic Versioning; release tags use the matching `v<version>` form.
 
-## 0.1.1 - 2026-09-12
+## 0.1.1 - 2026-09-13
+
+- Fixed technical descriptions being withheld by the built-in TypeScript and Rust guards due to unrelated memory/store, function/run, and token/output words. Tool, secret, external-send, memory, and policy rules now require request evidence and an associated target; explicit references can connect requests across sentences.
+- Kept direct override detection, hidden/attribute inspection, normalization, requested-use policy, and inspection-limit handling. No new dependencies or external classifiers are used.
+- Added rule identifiers and normalized variant UTF-16 evidence ranges to built-in finding reasons without returning matched text or changing public types. Reason strings are diagnostic text, not a stable parsing API.
+- Added technical-document regression fixtures and real HTTP/Chromium retrieval checks; the packed-consumer verification now runs the guard retrieval E2E.
+
+- Fixed release evidence generation for Vitest 5 by reading its JSON report from an explicit temporary output file.
 
 - Updated the TypeScript toolchain to TypeScript 7, Oxlint/Oxfmt, tsdown, and Vitest 5.
 - Updated npm and Cargo dependencies, Playwright CI, and Dependabot security coverage.

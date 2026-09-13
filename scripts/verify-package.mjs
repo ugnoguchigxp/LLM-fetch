@@ -1,5 +1,7 @@
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { runGuardE2e } from "./guard-e2e.mjs";
+import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -75,6 +77,10 @@ try {
     "node_modules",
     ...packageManifest.name.split("/"),
   );
+  const guardE2e = await runGuardE2e(
+    await import(pathToFileURL(join(installedPackageRoot, "dist/index.js")).href),
+  );
+  console.log(`Packed guard E2E: ${JSON.stringify(guardE2e)}`);
   const installedPackage = JSON.parse(
     await readFile(join(installedPackageRoot, "package.json"), "utf8"),
   );
