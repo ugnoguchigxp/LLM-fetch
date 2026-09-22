@@ -27,6 +27,8 @@ pub struct Config {
     pub require_reliable_background: bool,
     pub viewport_width: f64,
     pub viewport_height: f64,
+    pub debug_worker_visible: bool,
+    pub debug_worker_devtools: bool,
     pub network: NetworkConfig,
 }
 
@@ -68,6 +70,8 @@ impl Default for Config {
             require_reliable_background: true,
             viewport_width: 1280.0,
             viewport_height: 900.0,
+            debug_worker_visible: false,
+            debug_worker_devtools: false,
             network: NetworkConfig::default(),
         }
     }
@@ -308,6 +312,12 @@ impl Config {
         {
             return invalid();
         }
+        if self.debug_worker_visible || self.debug_worker_devtools {
+            // Window presentation is debug-only. Release builds must stay hidden.
+            if !cfg!(debug_assertions) {
+                return invalid();
+            }
+        }
         let global_hosts = HostPolicy::global(&self.allowed_hosts)?;
         Ok(Arc::new(ValidatedConfig {
             request_timeout: Duration::from_millis(self.request_timeout_ms),
@@ -401,5 +411,24 @@ mod tests {
             ..Config::default()
         };
         assert!(minimum.validate().is_ok());
+    }
+
+    #[test]
+    fn debug_worker_visibility_is_hidden_by_default_and_debug_only() {
+        assert!(!Config::default().debug_worker_visible);
+        assert!(!Config::default().debug_worker_devtools);
+        // In debug builds an explicit opt-in validates; in release builds
+        // the same config is rejected (release gate is `cfg!`-based, so a
+        // release test binary would assert `is_err()` here).
+        let debug = Config {
+            debug_worker_visible: true,
+            debug_worker_devtools: true,
+            ..Config::default()
+        };
+        if cfg!(debug_assertions) {
+            assert!(debug.validate().is_ok());
+        } else {
+            assert!(debug.validate().is_err());
+        }
     }
 }
