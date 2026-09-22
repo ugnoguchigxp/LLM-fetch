@@ -32,16 +32,24 @@ fn main() {
         };
         self_test = self_test.or(mode);
     }
-    let plugin = if matches!(self_test, Some(SelfTest::Boundary)) {
-        tauri_plugin_llm_fetch::Builder::default()
-            .config(Config {
-                max_queue_depth: 1,
-                ..Config::default()
-            })
-            .build()
-    } else {
-        tauri_plugin_llm_fetch::init()
-    };
+    let mut plugin_config = Config::default();
+    if matches!(self_test, Some(SelfTest::Boundary)) {
+        plugin_config.max_queue_depth = 1;
+    }
+    if matches!(self_test, Some(SelfTest::Long)) {
+        // Match the product's tolerance for transient resolver stalls while
+        // remaining inside the 30-second request deadline.
+        plugin_config.network.dns_timeout_ms = 10_000;
+    }
+    if std::env::var("LLMFETCH_DEBUG_VISIBLE").as_deref() == Ok("1") && cfg!(debug_assertions) {
+        // Development-only visible worker. Release builds ignore the env
+        // switch (plugin validation rejects visible workers there).
+        eprintln!("llm-fetch self-test: debug-visible worker enabled");
+        plugin_config.debug_worker_visible = true;
+    }
+    let plugin = tauri_plugin_llm_fetch::Builder::default()
+        .config(plugin_config)
+        .build();
     let setup_self_test = self_test;
     let app = tauri::Builder::default()
         .plugin(plugin)

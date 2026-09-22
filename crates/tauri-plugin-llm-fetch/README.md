@@ -77,6 +77,34 @@ cargo run -p tauri-background-fetch -- --self-test-fast
 
 All self-test modes keep both the example window and worker WebViews hidden,
 non-focusable, absent from the taskbar, and never always-on-top.
+
+### Debug-visible worker (development only)
+
+Product behavior is always hidden. For initial visual debugging, a debug
+build may show the worker WebView:
+
+```rust
+tauri_plugin_llm_fetch::Builder::default()
+    .config(tauri_plugin_llm_fetch::Config {
+        debug_worker_visible: true,
+        debug_worker_devtools: true,
+        ..Default::default()
+    })
+    .build()
+```
+
+Rules:
+
+- Both flags default to `false` and are only honored when
+  `cfg!(debug_assertions)` is set; release builds reject them at startup
+  with an invalid-config error.
+- Visibility changes window presentation and DevTools only. Proxy,
+  incognito storage, navigation policy, extraction, and guard behavior are
+  identical in visible and hidden modes.
+- Never set these flags in `tauri.conf.json`. Gate them behind an explicit
+  opt-in (for example `SAAA_LLM_FETCH_DEBUG_WINDOW=1`).
+- A visible-mode success is not evidence for background behavior: every
+  check must also pass hidden.
 `--self-test-long` reuses a hidden WebView at 0, 2, 6, and 10 minutes.
 `--self-test-leak` performs 100 complete one-shot create/fetch/destroy cycles.
 `--self-test-reuse` performs 100 navigations in one reusable session.
