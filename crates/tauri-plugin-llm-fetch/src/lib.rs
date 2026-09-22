@@ -5,6 +5,7 @@ mod errors;
 mod lifecycle;
 mod manager;
 mod network;
+mod plain_text_guard;
 mod platform;
 mod security;
 mod security_directive;
@@ -16,7 +17,7 @@ pub use config::{Config, ValidatedConfig};
 pub use contracts::*;
 pub use errors::{ErrorCode, ErrorResponse};
 pub use manager::{LlmFetch, LlmFetchManager};
-pub use security::{inspect_plain_text_bounded, PlainTextGuardOutcome};
+pub use plain_text_guard::{inspect_plain_text_bounded, PlainTextGuardOutcome};
 use std::sync::Arc;
 use tauri::{
     plugin::{Builder as PluginBuilder, TauriPlugin},
