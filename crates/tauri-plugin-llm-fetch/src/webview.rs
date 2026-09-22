@@ -194,7 +194,7 @@ impl<R: Runtime> Worker<R> {
             .map_err(|_| ErrorResponse::new(ErrorCode::WebviewUnavailable))?;
         let window = WebviewWindowBuilder::new(app, label, WebviewUrl::CustomProtocol(initial_url))
             .title("llm-fetch worker")
-            .visible(false)
+            .visible(config.raw.debug_worker_visible && cfg!(debug_assertions))
             .focused(false)
             .focusable(false)
             .decorations(false)
@@ -205,7 +205,7 @@ impl<R: Runtime> Worker<R> {
             .always_on_top(false)
             .skip_taskbar(true)
             .incognito(true)
-            .devtools(false)
+            .devtools(config.raw.debug_worker_devtools && cfg!(debug_assertions))
             .zoom_hotkeys_enabled(false)
             .general_autofill_enabled(false)
             .background_throttling(BackgroundThrottlingPolicy::Disabled)
