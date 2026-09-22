@@ -1,6 +1,6 @@
 # `tauri-plugin-llm-fetch` 検証記録
 
-- 判定日: 2026-08-31
+- 判定日: 2026-09-22
 - 対象: `tauri-plugin-llm-fetch` 0.1.0
 - 正式対象: macOS 14以降
 - 現在の判定: macOS 14以降の0.1.0 release gateはPASS
@@ -20,18 +20,19 @@
 
 | Gate | 結果 | 証拠 |
 |---|---|---|
-| Cargo build / unit | PASS | workspace 39 tests、doc tests成功 |
+| Cargo build / unit | PASS | workspace 43 tests、doc tests成功 |
 | Clippy | PASS | workspace/all-targets/all-features、warning 0 |
 | MSRV | PASS | Rust 1.90.0でworkspace/all-targets check成功 |
 | Rustdoc | PASS | warningをerror扱いして生成成功 |
 | Cargo package | PASS | 37 files、Node/TypeScript/Playwright/別browser binaryなし |
 | fast hidden WebView | PASS | reusable 2回、one-shot 1回 |
+| debug worker visibility (new) | PASS | `debug_worker_visible/devtools` config追加。hidden既定・debug可視・release拒否のunit testに加え、visible/hidden実WebViewの2 checkpointが同一結果 |
 | boundary suite | PASS | deny origin、Alt-Svc、Cookie分離、continuous DOM、queue/cancel/close |
 | one-shot lifecycle | PASS | 100/100、終了時registry/window残存なし |
 | reusable lifecycle | PASS | 100/100、終了時registry/window残存なし |
-| 10-minute background | PASS | 0、2、6、10分の同一hidden WebViewで取得成功 |
+| 10-minute background | PASS | 2026-09-22再実行で0、2、6、10分の同一hidden WebView取得、終了時one-shotとregistry/window cleanup成功。long試験のDNS期限は製品と同じ10秒 |
 | TypeScript reference | PASS | 21 files、239 passed、7 skipped、guard fixture一致 |
-| SAAA integration | PASS（plugin scope） | check/link成功、IPC binding 1 passed。作業中ASRコード由来でworkspace clippy 3件・test 1件は別途失敗 |
+| SAAA integration | PASS（WebFetch scope） | Rust検索live canary、SAAA dispatcher→実WebView content fetch、20 offline tests、sidecar cancel/fallbackを確認。依存は検証commitへrev固定 |
 | Source size | PASS | plugin/exampleのRust・JavaScript sourceは全て800行未満 |
 
 ## 実行コマンド
@@ -101,7 +102,7 @@ self-testはexample main windowとworker WebViewの両方に次を適用する�
 
 ## SAAAへの組み込み
 
-SAAAはpath dependency、plugin registration、`llm-fetch:default` capabilityを持つ。SAAAの既存sidecar web-fetchは今回置換していない。2026-08-31の再検証ではpluginを含む`cargo check --all-targets`とIPC binding testが成功した。workspace testは338 passed / 10 ignoredの後、並行実装中のstreaming ASR reconciler 1件で失敗し、clippyも同じASR周辺のdead code 3件で失敗した。いずれもllm-fetchのdependency、registration、permission、IPC contract由来ではないため、plugin統合gateとは分離して記録する。
+SAAAはplugin managerをRust backendから直接利用し、macOSではRust検索 + WebView content fetchを既定にする。frontend capabilityは削除済みで、Windows/Linuxは従来sidecarへfallbackする。依存はこの検証済みplugin commitへrevision固定し、隣接checkoutを必要としない。2026-09-22のSAAA scope検証ではoffline 20 testsとlive検索canaryが成功し、SAAA dispatcherから実workerで取得するE2Eも成功した。
 
 ## 継続canary
 
