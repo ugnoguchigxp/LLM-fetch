@@ -103,7 +103,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.1131.0",
     "@vitest/coverage-v8": "^5.0.0",
     "openai": "^7.15.0",
-    "oxfmt": "^0.67.0",
+    "oxfmt": "^0.70.0",
     "oxlint": "^1.82.0",
     "oxlint-tsgolint": "^7.0.2001",
     "playwright-core": "^1.63.0",
