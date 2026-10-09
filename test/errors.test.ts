@@ -47,6 +47,23 @@ describe("structured errors", () => {
     });
   });
 
+  it("G13 and content reasons stay bounded in JSON", () => {
+    const insufficient = new LlmFetchError(
+      "CONTENT_INSUFFICIENT",
+      "The response did not contain enough readable text.",
+      { reasonCode: "INSUFFICIENT_TEXT" },
+    );
+    expect(insufficient.toJSON()).toMatchObject({
+      code: "CONTENT_INSUFFICIENT",
+      reasonCode: "INSUFFICIENT_TEXT",
+    });
+    const ignored = new LlmFetchError("UPSTREAM_HTTP", "failed", {
+      reasonCode: "INSUFFICIENT_TEXT",
+    });
+    expect(ignored.reasonCode).toBeUndefined();
+    expect(ignored.toJSON()).not.toHaveProperty("reasonCode");
+  });
+
   it("omits absent optional fields from JSON", () => {
     expect(new LlmFetchError("UNKNOWN", "safe").toJSON()).toEqual({
       name: "LlmFetchError",

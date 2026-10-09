@@ -21,7 +21,9 @@ The public TypeScript declarations are authoritative. This page collects default
 | `fetcher` | built-in safe HTTP | Advanced override; caller owns its network security boundary |
 | `browser.defaultRender` | `auto` with a retriever, otherwise `never` | `never`, `auto`, or `always` |
 
-`SafeHttpFetcherOptions` defaults to a 10-second transport deadline, 1,000,000 compressed bytes, 2,000,000 decoded bytes, and three redirects. It accepts only `text/html`, `application/xhtml+xml`, `text/plain`, `application/xml`, and `text/xml`; a client configuration cannot add a type that has no extractor.
+`SafeHttpFetcherOptions` defaults to a 10-second transport deadline, 1,000,000 compressed bytes, 2,000,000 decoded bytes, and three redirects. It accepts only `text/html`, `application/xhtml+xml`, `text/plain`, `application/xml`, `text/xml`, and `text/markdown`; a client configuration cannot add a type that has no extractor. The media type is taken from `Content-Type`, not the URL extension. `text/markdown` is decoded with the same charset and BOM rules as other text types. HTML-free Markdown retains its structure and whitespace apart from LF normalization. A `<` also builds a separate inspection-only HTML projection; after guard approval, a separate formatter converts embedded HTML to Markdown while protecting code examples, escapes and autolinks. The projection inspects decoded values of all embedded HTML attributes, including attributes on hidden and removed elements, within the existing segment and character limits.
+
+HTML and XHTML `text` is structured Markdown from the existing selected main content. Embedded HTML is also converted in Markdown responses. Heading levels, nested lists, fenced code and resolved HTTP(S)/mailto links are retained. Simple tables use pipe rows; merged, ragged or complex cells use explicit row/column records with spans and each source cell emitted once. There is no HTML fallback. Literal tags in code examples stay code data. Hidden/executable markup is omitted only from output, after the original material is guarded. HTML link destinations and the bounded class-derived code language used by generated fences are inspected too. `contentType` describes the source response; `characterCount` counts the formatted, untruncated text. Conversion is capped at 2,000,000 characters and 1,024 columns per table; exceeding either returns `RESPONSE_TOO_LARGE`. Existing return limits and `truncated` still apply. When cutting inside an originally closed inline code span, its terminator is kept within the limit so literal tags do not become markup. Code fences and links are not completed and may remain partial. No new format option or API is introduced.
 
 ## Transport and provider options
 
@@ -35,7 +37,7 @@ The public TypeScript declarations are authoritative. This page collects default
 | `maxRedirects` | `3` | integer `0..10` |
 | `userAgent` | package name and version | non-empty, at most 512 characters, no control characters |
 | `resolver` | Node.js DNS lookup | `AddressResolver`; every returned address is revalidated |
-| `allowedContentTypes` | five readable media types | non-empty array; the client accepts only types it can extract |
+| `allowedContentTypes` | six readable media types | non-empty array; the client accepts only types it can extract |
 
 Only standard HTTP port 80 and HTTPS port 443 are accepted. The wire limit applies before decompression and the decoded limit applies after gzip, deflate, or Brotli decoding.
 
@@ -124,7 +126,23 @@ SDK packages are development-only compatibility dependencies and are not install
 | `GUARD_DENIED` | no | Route `guardDecision: "require_approval"` to a human approval flow; reject `deny` |
 | `UNKNOWN` | no by default | Log bounded metadata and investigate |
 
-`LlmFetchError.toJSON()` exposes only bounded metadata. It never serializes `cause`, response bodies, hidden text, cookies, or API keys.
+`LlmFetchError.toJSON()` exposes only bounded metadata. It never serializes `cause`, `guardDiagnostics`, response bodies, hidden text, cookies, or API keys. Host code that needs the numeric scan summary reads `error.guardDiagnostics` explicitly and does not forward it to a model.
+
+`RetrievedDocument.truncated` means only that the returned `text` was shortened. `characterCount` is the selected text length before that return limit. Inspection uses the selected text before the return limit is applied, so a smaller `maxCharacters` does not hide the tail from the guard. An inspection shortfall fails closed even when the returned slice would have been harmless.
+
+Built-in guard results always include `reasonCodes`. `diagnostics` contains one bounded record per inspection. Merged results keep at most eight records, in inspection order. Those eight records are the first summaries, not a document-wide total. Counts are non-negative safe integers of UTF-16 code units. They do not include URLs, hashes, or matched text.
+
+| `GuardReasonCode` | Meaning |
+| --- | --- |
+| `PATTERN_DETECTED` | At least one finding other than `benign_mention`, including warnings |
+| `SEGMENT_COUNT_LIMIT` | Scanner input exceeded `maxSegments` |
+| `CHARACTER_BUDGET_LIMIT` | A selected segment still had unscanned characters after the character budget |
+| `SEGMENT_TEXT_LIMIT` | A collector marked a segment `truncated` |
+| `SEGMENT_COLLECTION_LIMIT` | The collector omitted at least one segment |
+| `INSPECTION_INCOMPLETE` | Inspection was marked incomplete without one of the specific limit codes above |
+| `ADDITIONAL_GUARD_RESTRICTION` | An additional guard returned `require_approval` or `deny` |
+
+`CONTENT_INSUFFICIENT` may set `reasonCode` to `INSUFFICIENT_TEXT` or `DYNAMIC_RENDERING_REQUIRED`. Browser fallback in `auto` mode runs only for HTML or XHTML after a completed guard when one of those two reasons is present. Markdown, plain text, XML, `GUARD_DENIED`, and `GUARD_FAILED` do not start that fallback.
 
 ## Custom contracts
 

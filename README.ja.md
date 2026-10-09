@@ -12,7 +12,7 @@ Tauriアプリではnpm版を組み込まず、同じリポジトリのCargo-onl
 
 ## 動作環境
 
-- Node.js 20.19以上、またはBun 1.3.14以上
+- Node.js 22.18以上、またはBun 1.3.14以上
 - ESM / CommonJS
 
 コア機能の直接依存はCheerioだけです。OpenAI SDK、AWS SDK、Playwright、ブラウザ本体は標準インストールに含みません。
@@ -49,6 +49,43 @@ try {
 ```
 
 `searchAndRead()`はページを並行取得し、同じhostへの同時接続は既定2件に抑えます（全体の並列数が1なら1件）。ページ単位の失敗は`failures`へ入り、ほかの結果は残ります。検索後に全体期限へ達した場合も、完了済み文書を保持して`timedOut: true`を返し、処理中と未開始のURLを別のfailure kindで示します。呼び出し側の`AbortSignal`と検索自体の失敗は例外になります。
+
+読むページを先に選ぶ場合は、検索だけ行ってから選んだURLを`read()`します。下の`slice`は選択処理の簡略例です。`text/markdown`の見出し、リスト、コード、空白は`text`へそのまま残します。検索結果と本文は最後まで`untrusted` / `tainted`です。
+
+```ts
+import { createLlmFetch, duckDuckGo, LlmFetchError } from "llm-fetch";
+
+const web = createLlmFetch({ search: duckDuckGo() });
+const hits = await web.search({
+  query: "TypeScript web retrieval",
+  limit: 5,
+});
+const selected = hits.slice(0, 2);
+const documents = [];
+const failures = [];
+
+for (const hit of selected) {
+  try {
+    documents.push(await web.read({ url: hit.url, maxCharacters: 5_000 }));
+  } catch (error) {
+    if (!(error instanceof LlmFetchError)) throw error;
+    if (error.code === "GUARD_DENIED") {
+      failures.push({
+        url: hit.url,
+        code: error.code,
+        guardDecision: error.guardDecision,
+        guardReasonCodes: error.guardReasonCodes,
+      });
+      continue;
+    }
+    failures.push({ url: hit.url, code: error.code, status: error.status });
+  }
+}
+
+await web.close();
+```
+
+`guardReasonCodes`でガード拒否とHTTPや文字コードの失敗を分けます。`error.guardDiagnostics`はホスト向けの数値で、モデルへ渡さないでください。`require_approval`はライブラリ内では解除できません。
 
 | API | 用途 |
 | --- | --- |
@@ -178,7 +215,7 @@ const output = await toolset.execute("web_search", {
 
 OpenAI SDKとAWS SDKは不要です。ツール定義は通常のJSONとして生成します。
 
-`web_search`は既定で5件を返し、外部由来のタイトルと要約を短く制限します。危険度が高いプロンプトインジェクションを含む検索結果は出力しません。`fetch_content`は既定5,000文字、最大20,000文字です。LLMへ返すのは引用用URL、可視本文、取得時刻、打ち切りの有無、短い安全性情報だけです。HTML構造、script、style、イベント属性、非表示内容、生のレスポンス情報、詳細な検査ログは含めません。
+`web_search`は既定で5件を返し、外部由来のタイトルと要約を短く制限します。モデルはその結果からURLを選び、`fetch_content`を呼びます。危険度が高いプロンプトインジェクションを含む検索結果は出力しません。`fetch_content`は既定5,000文字、最大20,000文字です。HTMLとXHTMLも、見出し階層、入れ子リスト、表、コード、リンクを保ったMarkdownで返します。Markdown内に混在するHTMLも変換し、コード例のタグはコード内の文字列として残します。LLMへ返すのは引用用URL、本文、取得時刻、打ち切りの有無、短い安全性情報で、理由コードがあるときは`reasonCodes`も含みます。元の検査材料に対するガードが許可した後、script、style、属性、非表示要素を除いて返却用Markdownを生成します。単純な表はMarkdownの行列にし、結合セルや複雑なセルは行・列・結合範囲を示す記録形式にします。セルの本文を複製したり、HTMLへ戻したりしません。出典の`contentType`は変えません。返却内容は引き続き信頼できない文字列です。生のレスポンス情報と詳細な検査ログはツール出力に含めません。
 
 低レベルAPIの`SearchHit`と`searchAndRead().hits`にも`trust: "untrusted"`、`tainted: true`が付きます。タイトルと要約をsystem promptや命令文へ直接連結しないでください。LLMへ渡す場合は`toolset()`を使います。`openaiDefinitions()`はChat Completions形式の非推奨aliasとして残しています。
 
@@ -186,7 +223,7 @@ OpenAI SDKとAWS SDKは不要です。ツール定義は通常のJSONとして�
 
 取得した文書は、検出結果が0件でも`trust: "untrusted"`、`tainted: true`になります。内蔵Context Guardは無効化できません。
 
-検査では、可視本文、非表示内容、HTMLコメント、メタデータ、template、信頼度の低い属性を分けます。長すぎるsegmentは先頭と末尾を検査し、件数や文字数の上限で欠落が出た場合は必ず安全側へ倒して`limitations`へ理由を残します。HTTP charset、BOM、HTML metaはclientと単独Guardで同じdecoderを使い、BOMを優先します。未対応または不正な文字コードは`UNSUPPORTED_CONTENT_ENCODING`になります。
+検査では、可視本文、非表示内容、HTMLコメント、メタデータ、template、信頼度の低い属性を分けます。Markdown本文はそのまま検査し、`<`が含まれる場合はHTML投影も追加して隠れた命令を見逃さないようにします。文字数予算に収まる選択済みsegmentは全文を検査します。収まらないsegmentだけ先頭と末尾を検査し、欠落があれば必ず安全側へ倒します。内蔵Guardは安定した`reasonCodes`と、数値だけの`diagnostics`を返します。HTTP charset、BOM、HTML metaはclientと単独Guardで同じdecoderを使い、BOMを優先します。未対応または不正な文字コードは`UNSUPPORTED_CONTENT_ENCODING`になります。
 
 厳しめに判定する場合は`strict`プロファイルを指定します。
 
@@ -219,11 +256,11 @@ try {
 
 内蔵プロバイダーとHTTP通信処理は、取得したHTML、検索レスポンス、Cookie、APIキーをエラーメッセージへ含めません。独自実装を追加する場合も、同じ情報をログや例外へ出さないでください。
 
-`GUARD_DENIED`の`guardDecision`で`require_approval`と`deny`を区別できます。`warningCategories`には短い分類名だけが入り、JSON化しても本文やcauseは出ません。既定値と推奨処理は[API・エラー一覧](./docs/API.md)にまとめています。
+`GUARD_DENIED`の`guardDecision`で`require_approval`と`deny`を区別できます。`warningCategories`には短い分類名、`guardReasonCodes`にはパターン検出と検査上限のコードが入ります。`toJSON()`は理由コードを含め、`guardDiagnostics`と本文とcauseは出しません。`CONTENT_INSUFFICIENT`には`INSUFFICIENT_TEXT`または`DYNAMIC_RENDERING_REQUIRED`の`reasonCode`が付くことがあります。既定値と推奨処理は[API・エラー一覧](./docs/API.md)にまとめています。
 
 ## 制約、privacy、利用上の責任
 
-Shadow DOM、CSS generated content、canvasや画像内の文字、iframe本文、外部CSS本文は抽出しません。接続先は標準HTTP / HTTPS portだけです。browser modeでは第三者JavaScriptを実行します。検索語は選択したproviderへ送られ、取得先サイトには利用者のIP、User-Agent、アクセス時刻などが伝わります。providerとsiteの利用条件、robots、頻度、個人情報、著作権を確認してください。詳しくは[Responsible use and privacy](./docs/RESPONSIBLE_USE.md)を参照してください。
+返却するMarkdownも信頼できない外部データです。画面へ表示する場合は、利用側でMarkdown描画とリンク先の制限を適用してください。Shadow DOM、CSS generated content、canvasや画像内の文字、iframe本文、外部CSS本文は抽出しません。PDFとOfficeには対応していません。Markdownは読み取り用の構造を表し、見た目の配置は再現しません。複雑な表は記録形式にし、返却上限ではコードフェンスやリンクの途中で終わる場合があります。元から閉じているインラインコードの途中で切る場合は、上限内で終端を保ちます。変換後の本文は最大2,000,000文字、表は最大1,024列に制限します。検査上限を上げても、そのページが安全だと認定したことにはなりません。接続先は標準HTTP / HTTPS portだけです。browser modeでは第三者JavaScriptを実行します。検索語は選択したproviderへ送られ、取得先サイトには利用者のIP、User-Agent、アクセス時刻などが伝わります。providerとsiteの利用条件、robots、頻度、個人情報、著作権を確認してください。詳しくは[Responsible use and privacy](./docs/RESPONSIBLE_USE.md)を参照してください。
 
 `close()`は複数回呼んでも問題ありません。終了処理を始めたクライアントは再利用できず、新しい操作は`CONFIG_MISSING`になります。
 

@@ -43,6 +43,14 @@ const results = firstResults.map((first) => {
     overThresholdRuns,
     batchSize: first.batchSize,
   };
+  if (first.thresholdMs == null) {
+    return {
+      ...result,
+      thresholdMs: null,
+      overThresholdRuns: 0,
+      reportOnly: true,
+    };
+  }
   if (
     result.medianP95Ms > result.thresholdMs ||
     result.overThresholdRuns >= Math.ceil(runCount / 2)

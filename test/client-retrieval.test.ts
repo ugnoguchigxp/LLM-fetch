@@ -275,6 +275,7 @@ describe("llm-fetch client guards and custom retrieval", () => {
 
     await expect(client.read({ url: "https://example.com/app" })).rejects.toMatchObject({
       code: "CONTENT_INSUFFICIENT",
+      reasonCode: "DYNAMIC_RENDERING_REQUIRED",
     });
     expect(browserRetrieve).not.toHaveBeenCalled();
   });

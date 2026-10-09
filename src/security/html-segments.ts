@@ -1,5 +1,7 @@
 import type { CheerioAPI } from "cheerio";
 import type { SecurityFindingLocation } from "../contracts.js";
+import { domNodeAttributes } from "../retrieval/html-limits.js";
+import { codeLanguage } from "../retrieval/code-language.js";
 
 export interface ContentSegment {
   location: SecurityFindingLocation;
@@ -72,7 +74,11 @@ function increment(summary: Record<string, number>, key: string): void {
   summary[key] = (summary[key] ?? 0) + 1;
 }
 
-export function prepareHtmlForExtraction($: CheerioAPI, rawHtml: string): PreparedHtml {
+export function prepareHtmlForExtraction(
+  $: CheerioAPI,
+  rawHtml: string,
+  options: { inspectAllAttributes?: boolean } = {},
+): PreparedHtml {
   const segments: ContentSegment[] = [];
   const excludedSummary: Record<string, number> = {};
   let omittedSegments = 0;
@@ -101,12 +107,30 @@ export function prepareHtmlForExtraction($: CheerioAPI, rawHtml: string): Prepar
     increment(excludedSummary, "template");
   });
 
-  $("[aria-label], [title], [alt]").each((_index, element) => {
-    for (const attribute of ["aria-label", "title", "alt"] as const) {
+  const attributeNodes = options.inspectAllAttributes
+    ? $("*")
+    : $("[aria-label], [title], [alt], [href]");
+  attributeNodes.each((_index, element) => {
+    // Inspect decoded attributes before removing markup. Link destinations can
+    // enter Markdown output; removed attributes remain inspection material.
+    const attributes = options.inspectAllAttributes
+      ? Object.keys(domNodeAttributes(element))
+      : ["aria-label", "title", "alt", "href"];
+    for (const attribute of attributes) {
       const bounded = boundedText($(element).attr(attribute) ?? "");
       if (!bounded.text) continue;
       if (!appendSegment(segments, "attribute", bounded)) omittedSegments += 1;
       increment(excludedSummary, `attribute:${attribute}`);
+    }
+  });
+  $("pre").each((_index, element) => {
+    const language = codeLanguage(element);
+    if (language) {
+      // Fence labels are identifiers. Inspect their words as well as retaining
+      // the original raw-body/attribute inspection; underscores must not hide
+      // a directive in metadata newly exposed by Markdown formatting.
+      collect("attribute", language.replace(/_/g, " "));
+      increment(excludedSummary, "attribute:code-language");
     }
   });
 

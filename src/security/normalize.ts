@@ -99,10 +99,58 @@ function printableRatio(value: string): number {
   return printable / [...value].length;
 }
 
+function unchangedAsciiVariant(text: string): ScanVariant[] | undefined {
+  let wordLength = 0;
+  let spacedSingles = 0;
+  let base64Run = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code > 0x7e || (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d)) {
+      return undefined;
+    }
+    if (
+      code === 0x25 ||
+      code === 0x5c ||
+      code === 0x24 ||
+      code === 0x40 ||
+      (code >= 0x30 && code <= 0x39)
+    ) {
+      return undefined;
+    }
+    const letter = (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+    if (code === 0x2f && wordLength > 0) {
+      const next = text.charCodeAt(index + 1);
+      if ((next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a)) return undefined;
+    }
+    if (letter || code === 0x2b || code === 0x2f) {
+      base64Run += 1;
+      if (base64Run >= 16) return undefined;
+      wordLength = letter ? wordLength + 1 : 0;
+      continue;
+    }
+    if ((code === 0x2e || code === 0x5f || code === 0x7c || code === 0x2d) && wordLength > 0) {
+      const next = text.charCodeAt(index + 1);
+      if ((next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a)) return undefined;
+    }
+    if (code === 0x20 || code === 0x09) {
+      if (wordLength === 1) spacedSingles += 1;
+      else if (wordLength > 1) spacedSingles = 0;
+      if (spacedSingles >= 3) return undefined;
+    } else {
+      spacedSingles = 0;
+    }
+    wordLength = 0;
+    base64Run = 0;
+  }
+  return [{ text, techniques: [] }];
+}
+
 export function normalizeForScan(input: string, options: NormalizationOptions = {}): ScanVariant[] {
   const maxInputCharacters = options.maxInputCharacters ?? 200_000;
   const maxDecodedCandidates = options.maxDecodedCandidates ?? 32;
   const source = input.slice(0, maxInputCharacters);
+  const unchanged = unchangedAsciiVariant(source);
+  if (unchanged) return unchanged;
   const commonTechniques = new Set<string>();
   let text = source;
 

@@ -22,6 +22,7 @@ export const READABLE_CONTENT_TYPES = new Set([
   "application/xhtml+xml",
   "application/xml",
   "text/xml",
+  "text/markdown",
 ]);
 
 export function searchCacheKey(provider: string, input: SearchInput): string {

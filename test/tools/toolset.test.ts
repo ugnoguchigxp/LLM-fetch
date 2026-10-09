@@ -82,6 +82,8 @@ describe("LLM toolset", () => {
     const fetchDefinition = toolset
       .openaiChatCompletionsDefinitions()
       .find((definition) => definition.function.name === "fetch_content");
+    expect(fetchDefinition?.function.description).toContain("structured Markdown");
+    expect(fetchDefinition?.function.description).not.toContain("returned HTML text");
     expect(fetchDefinition?.function.parameters).toMatchObject({
       required: ["url", "maxCharacters"],
       properties: {
@@ -136,12 +138,16 @@ describe("LLM toolset", () => {
       expect(output.security.warningCategories).toEqual(
         expect.arrayContaining(["instruction_override"]),
       );
+      expect(output.security.reasonCodes).toEqual(expect.arrayContaining(["PATTERN_DETECTED"]));
       expect(Object.keys(output.security).sort()).toEqual([
         "decision",
+        "reasonCodes",
         "tainted",
         "trust",
         "warningCategories",
       ]);
+      expect(output.security).not.toHaveProperty("diagnostics");
+      expect(output.security).not.toHaveProperty("findings");
       expect(output.hits).toHaveLength(1);
       expect(output.hits[0]?.url).toBe("https://example.com/safe");
     }
