@@ -674,11 +674,17 @@ async fn assert_no_worker_windows<R: tauri::Runtime>(
 fn verify_example_document(
     document: &tauri_plugin_llm_fetch::RetrievedDocument,
 ) -> Result<(), String> {
-    if !document.final_url.starts_with("https://example.com/")
-        || !document.text.contains("Example Domain")
-        || !document.security.tainted
-    {
-        return Err("example.com result violated the retrieval contract".into());
+    let expected_url = document.final_url.starts_with("https://example.com/");
+    let expected_title = document.title == "Example Domain";
+    let expected_body = document.text.contains("This domain");
+    // Title metadata and visible body are separate parts of the contract.
+    // Do not require the external site's heading to be repeated in body text.
+    if !expected_url || !expected_title || !expected_body || !document.security.tainted {
+        return Err(format!(
+            "example.com result violated the retrieval contract: expected_url={expected_url}, expected_title={expected_title}, expected_body={expected_body}, tainted={}, characters={}",
+            document.security.tainted,
+            document.text.chars().count(),
+        ));
     }
     Ok(())
 }
