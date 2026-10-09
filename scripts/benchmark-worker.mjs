@@ -120,7 +120,7 @@ try {
       async (index) => {
         await client.read({ url: `https://example.com/benchmark-${index}` });
       },
-      75,
+      150,
       2,
     ),
     await measure(
