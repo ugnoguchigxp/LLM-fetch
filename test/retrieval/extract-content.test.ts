@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeBody,
-  extractHtmlContent,
+  selectHtmlContent,
   extractPlainTextContent,
   loadHtml,
   loadXml,
@@ -84,33 +84,30 @@ describe("bounded extraction decoding", () => {
     );
   });
 
-  it("selects non-overlapping HTML candidates and truncates returned text", () => {
+  it("selects full non-overlapping HTML inspection candidates", () => {
     const html = `<html><head><meta property="og:title" content="  Fixture title  "></head><body>
       <main><article><h1>Heading</h1><p>${"Useful factual content. ".repeat(20)}</p></article></main>
     </body></html>`;
-    const result = extractHtmlContent(loadHtml(html), "https://example.com/path", {
-      maxCharacters: 100,
-    });
+    const result = selectHtmlContent(loadHtml(html), "https://example.com/path");
     expect(result.title).toBe("Fixture title");
-    expect(result.truncated).toBe(true);
-    expect(result.text.length).toBeLessThanOrEqual(100);
-    expect(result.characterCount).toBeGreaterThan(result.text.length);
+    expect(result.text).toContain("Heading");
+    expect(result.text.length).toBeGreaterThan(100);
+    expect(result.element).toBeDefined();
   });
 
   it("falls back to body text and hostname and rejects insufficient pages", () => {
     const bodyOnly = `<html><body><div>${"Readable body text. ".repeat(10)}</div></body></html>`;
-    expect(extractHtmlContent(loadHtml(bodyOnly), "https://example.com/path")).toMatchObject({
+    expect(selectHtmlContent(loadHtml(bodyOnly), "https://example.com/path")).toMatchObject({
       title: "example.com",
-      truncated: false,
     });
     expect(() =>
-      extractHtmlContent(loadHtml("<html><body>tiny</body></html>"), "https://example.com/"),
+      selectHtmlContent(loadHtml("<html><body>tiny</body></html>"), "https://example.com/"),
     ).toThrowError(expect.objectContaining({ code: "CONTENT_INSUFFICIENT" }));
   });
 
   it("bounds the number of content candidates", () => {
     const html = `<html><body>${"<article>content</article>".repeat(513)}</body></html>`;
-    expect(() => extractHtmlContent(loadHtml(html), "https://example.com/")).toThrowError(
+    expect(() => selectHtmlContent(loadHtml(html), "https://example.com/")).toThrowError(
       expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }),
     );
   });
@@ -120,14 +117,14 @@ describe("bounded extraction decoding", () => {
       { length: 260 },
       () => "<article>short</article><main>short</main>",
     ).join("")}</body></html>`;
-    expect(() => extractHtmlContent(loadHtml(tooManyKinds), "https://example.com/")).toThrowError(
+    expect(() => selectHtmlContent(loadHtml(tooManyKinds), "https://example.com/")).toThrowError(
       expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }),
     );
 
     const bodyFallback = `<html><body><article>tiny</article><div>${"Useful factual body content. ".repeat(
       10,
     )}</div></body></html>`;
-    expect(extractHtmlContent(loadHtml(bodyFallback), "https://example.com/")).toMatchObject({
+    expect(selectHtmlContent(loadHtml(bodyFallback), "https://example.com/")).toMatchObject({
       text: expect.stringContaining("Useful factual body content"),
     });
   });
@@ -139,7 +136,7 @@ describe("bounded extraction decoding", () => {
       <article><p>${teaser}</p></article>
       <section><p>${fullArticle}</p></section>
     </main></body></html>`;
-    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    const result = selectHtmlContent(loadHtml(html), "https://example.com/article");
     expect(result.text).toContain(teaser.trim().slice(0, 100));
     expect(result.text).toContain(fullArticle.trim().slice(0, 200));
     expect(result.text.length).toBeGreaterThanOrEqual(teaser.length + fullArticle.length);
@@ -152,7 +149,7 @@ describe("bounded extraction decoding", () => {
       <article><p>${teaser}</p></article>
       <section><p>${fullArticle}</p></section>
     </body></html>`;
-    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    const result = selectHtmlContent(loadHtml(html), "https://example.com/article");
     expect(result.text).toContain(teaser.trim().slice(0, 100));
     expect(result.text).toContain(fullArticle.trim().slice(0, 200));
     expect(result.text.length).toBeGreaterThanOrEqual(teaser.length + fullArticle.length);
@@ -165,7 +162,7 @@ describe("bounded extraction decoding", () => {
       <article><p>${first}</p></article>
       <article><p>${second}</p></article>
     </body></html>`;
-    const result = extractHtmlContent(loadHtml(html), "https://example.com/articles");
+    const result = selectHtmlContent(loadHtml(html), "https://example.com/articles");
     expect(result.text).toContain(first.trim().slice(0, 200));
     expect(result.text).toContain(second.trim().slice(0, 200));
   });
@@ -181,7 +178,7 @@ describe("bounded extraction decoding", () => {
       <article><p>${teaser}</p></article>
       <section><p>${fullArticle}</p></section>
     </main>${extraCandidates}</body></html>`;
-    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    const result = selectHtmlContent(loadHtml(html), "https://example.com/article");
     expect(result.text).toContain(teaser.trim().slice(0, 100));
     expect(result.text).toContain(fullArticle.trim().slice(0, 200));
   });
@@ -196,14 +193,14 @@ describe("bounded extraction decoding", () => {
       <div class="content">${links}</div>
       <article><p>${article}</p></article>
     </body></html>`;
-    const result = extractHtmlContent(loadHtml(html), "https://example.com/article");
+    const result = selectHtmlContent(loadHtml(html), "https://example.com/article");
     expect(result.text).toContain(article.trim().slice(0, 200));
   });
 
   it("preserves direct candidate text that surrounds block elements", () => {
     const directText = "Direct article text remains part of the extracted result. ".repeat(4);
     const html = `<html><body><main>${directText}<p>Short paragraph.</p>${directText}</main></body></html>`;
-    expect(extractHtmlContent(loadHtml(html), "https://example.com/")).toMatchObject({
+    expect(selectHtmlContent(loadHtml(html), "https://example.com/")).toMatchObject({
       text: expect.stringContaining("Direct article text remains"),
     });
   });

@@ -19,6 +19,7 @@ const DEFAULT_ALLOWED_CONTENT_TYPES = new Set([
   "application/xhtml+xml",
   "application/xml",
   "text/xml",
+  "text/markdown",
 ]);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -321,7 +322,8 @@ export function createSafeHttpFetcher(options: SafeHttpFetcherOptions = {}) {
     throw new LlmFetchError("INVALID_INPUT", "userAgent contains invalid characters.");
   }
   const headers = {
-    accept: "text/html,application/xhtml+xml,text/plain,application/xml,text/xml;q=0.9",
+    accept:
+      "text/html,application/xhtml+xml,text/plain,application/xml,text/xml;q=0.9,text/markdown;q=0.9",
     "accept-encoding": "gzip, br, deflate",
     "user-agent": userAgent,
   };

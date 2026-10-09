@@ -1,7 +1,11 @@
 export { createLlmFetch } from "./client.js";
 export type { LlmFetchClient, LlmFetchOptions } from "./client.js";
 export { LlmFetchError, toLlmFetchError } from "./errors.js";
-export type { LlmFetchErrorCode, LlmFetchErrorOptions } from "./errors.js";
+export type {
+  ContentInsufficiencyReasonCode,
+  LlmFetchErrorCode,
+  LlmFetchErrorOptions,
+} from "./errors.js";
 export { custom } from "./providers/custom.js";
 export { brave } from "./providers/brave.js";
 export type { BraveOptions } from "./providers/brave.js";
@@ -28,7 +32,9 @@ export type { BuiltinContextGuard, BuiltinContextGuardOptions } from "./security
 export type {
   ContentGuard,
   GuardDecision,
+  GuardReasonCode,
   GuardResult,
+  GuardScanDiagnostics,
   ReadInput,
   RequestedContextUse,
   RetrievedDocument,

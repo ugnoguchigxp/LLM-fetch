@@ -7,6 +7,7 @@ import type {
 import type { ContentSegment } from "./html-segments.js";
 import { matchDirective, textUnits, type RuleMatch } from "./directive-context.js";
 import { normalizeForScan } from "./normalize.js";
+import { allocateCharacterBudgets, selectSegmentIndexes, textForBudget } from "./scan-budget.js";
 
 interface DetectionRule {
   category: SecurityFindingCategory;
@@ -178,55 +179,59 @@ export function scanSegments(
   findings: SecurityFinding[];
   truncated: boolean;
   truncationReasons: string[];
+  segmentCountLimit: boolean;
+  characterBudgetLimit: boolean;
+  diagnostics: {
+    segmentCount: number;
+    selectedSegmentCount: number;
+    scannedSegmentCount: number;
+    availableCharacters: number;
+    scannedCharacters: number;
+    maxSegments: number;
+    maxCharacters: number;
+    omittedSegments: number;
+  };
 } {
   const maxSegments = options.maxSegments ?? 128;
   const maxCharacters = options.maxCharacters ?? 250_000;
   const findings: SecurityFinding[] = [];
   const keys = new Set<string>();
   const truncationReasons = new Set<string>();
-  let inspectedCharacters = 0;
+  const segmentCountLimit = segments.length > maxSegments;
   if (segments.some((segment) => segment.truncated)) {
     truncationReasons.add(
       "One or more content segments exceeded the per-segment inspection limit.",
     );
   }
-  if (segments.length > maxSegments) {
+  if (segmentCountLimit) {
     truncationReasons.add("The content contained more segments than the inspection limit.");
   }
 
-  const selectedSegments =
-    segments.length <= maxSegments
-      ? [...segments]
-      : [
-          ...segments.slice(0, Math.ceil(maxSegments / 2)),
-          ...segments.slice(-Math.floor(maxSegments / 2)),
-        ];
+  const selectedSegments = selectSegmentIndexes(segments.length, maxSegments).map(
+    (index) => segments[index]!,
+  );
+  const budgets = allocateCharacterBudgets(
+    selectedSegments.map((segment) => segment.text.length),
+    maxCharacters,
+  );
+  let scannedCharacters = 0;
+  let scannedSegmentCount = 0;
+  let characterBudgetLimit = false;
 
   for (const [index, segment] of selectedSegments.entries()) {
-    const remaining = maxCharacters - inspectedCharacters;
-    if (remaining <= 0) {
-      truncationReasons.add("The content exceeded the total character inspection limit.");
-      break;
-    }
-    const remainingSegments = selectedSegments.length - index;
-    const fairShare = Math.max(1, Math.floor(remaining / remainingSegments));
-    const budget = Math.min(segment.text.length, fairShare);
-    const headLength = Math.ceil(budget / 2);
-    const tailLength = Math.floor(budget / 2);
-    const text =
-      segment.text.length <= budget
-        ? segment.text
-        : `${segment.text.slice(0, headLength)}${
-            tailLength > 0 ? segment.text.slice(-tailLength) : ""
-          }`;
-    inspectedCharacters += text.length;
-    if (text.length < segment.text.length) {
+    const budget = budgets[index] ?? 0;
+    if (budget < segment.text.length) {
+      characterBudgetLimit = true;
       truncationReasons.add("The content exceeded the total character inspection limit.");
     }
+    if (budget <= 0) continue;
+    const text = textForBudget(segment.text, budget);
+    scannedCharacters += text.length;
+    if (segment.text.length > 0 && text.length > 0) scannedSegmentCount += 1;
     let segmentMatchedRule = false;
 
     for (const [variantIndex, variant] of normalizeForScan(text, {
-      maxInputCharacters: remaining,
+      maxInputCharacters: text.length,
       maxDecodedCandidates: 32,
     }).entries()) {
       let units: ReturnType<typeof textUnits> | undefined;
@@ -286,5 +291,17 @@ export function scanSegments(
     findings,
     truncated: truncationReasons.size > 0,
     truncationReasons: [...truncationReasons],
+    segmentCountLimit,
+    characterBudgetLimit,
+    diagnostics: {
+      segmentCount: segments.length,
+      selectedSegmentCount: selectedSegments.length,
+      scannedSegmentCount,
+      availableCharacters: segments.reduce((sum, segment) => sum + segment.text.length, 0),
+      scannedCharacters,
+      maxSegments,
+      maxCharacters,
+      omittedSegments: 0,
+    },
   };
 }

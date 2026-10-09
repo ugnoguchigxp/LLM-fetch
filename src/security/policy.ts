@@ -1,10 +1,13 @@
 import type {
   GuardDecision,
+  GuardReasonCode,
   GuardResult,
+  GuardScanDiagnostics,
   RequestedContextUse,
   SecurityFinding,
   SecurityFindingSeverity,
 } from "../contracts.js";
+import { copyGuardDiagnostics, freezeGuardReasonCodes } from "./guard-codes.js";
 
 const SEVERITY_RANK: Record<SecurityFindingSeverity, number> = {
   info: 0,
@@ -26,6 +29,8 @@ export function decideContextPolicy(input: {
   requestedUse: RequestedContextUse;
   truncated: boolean;
   truncationReasons?: readonly string[];
+  reasonCodes?: readonly GuardReasonCode[];
+  diagnostics?: GuardScanDiagnostics;
 }): GuardResult {
   const relevant = input.findings.filter((finding) => finding.category !== "benign_mention");
   const strongest = strongestSeverity(relevant);
@@ -72,5 +77,7 @@ export function decideContextPolicy(input: {
     decision,
     reasons,
     limitations,
+    ...(input.reasonCodes ? { reasonCodes: freezeGuardReasonCodes(input.reasonCodes) } : {}),
+    ...(input.diagnostics ? { diagnostics: copyGuardDiagnostics([input.diagnostics]) } : {}),
   };
 }

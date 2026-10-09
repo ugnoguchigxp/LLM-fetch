@@ -40,6 +40,16 @@ const duckProvider = duckDuckGo({
       },
     ),
 });
+const unevenSegments = `<html><body><main><p>${"A".repeat(20_000)}</p></main>${Array.from(
+  { length: 99 },
+  () => `<i title="title"></i>`,
+).join("")}</body></html>`;
+const segmentLimitHtml = `<html><body><main><p>${paragraph}</p></main>${Array.from(
+  { length: 180 },
+  () => `<i title="note"></i>`,
+).join("")}</body></html>`;
+const nearLimitText = `${paragraph.repeat(Math.ceil(250_000 / paragraph.length)).slice(0, 249_000)}tail`;
+const markdownMix = `# Retrieval notes\n\n${paragraph.repeat(40)}\n\n<div><p>Visible technical detail.</p></div>\n\n\`\`\`ts\nconst value = 1;\n\`\`\`\n`;
 const guard = createBuiltinContextGuard({ maxCharacters: 2_000_000 });
 const client = createLlmFetch({
   cache: { enabled: false },
@@ -112,6 +122,54 @@ try {
       },
       75,
       2,
+    ),
+    await measure(
+      "Uneven 100-segment guard",
+      async () => {
+        await guard.inspectRaw({
+          rawBody: encoder.encode(unevenSegments),
+          contentType: "text/html; charset=utf-8",
+          source: { kind: "unknown", trust: "untrusted" },
+          requestedUse: "answer_with_citation",
+        });
+      },
+      null,
+    ),
+    await measure(
+      "Segment-count limit guard",
+      async () => {
+        await guard.inspectRaw({
+          rawBody: encoder.encode(segmentLimitHtml),
+          contentType: "text/html; charset=utf-8",
+          source: { kind: "unknown", trust: "untrusted" },
+          requestedUse: "answer_with_citation",
+        });
+      },
+      null,
+    ),
+    await measure(
+      "Plain text near 250k guard",
+      async () => {
+        await guard.inspectRaw({
+          rawBody: encoder.encode(nearLimitText),
+          contentType: "text/plain; charset=utf-8",
+          source: { kind: "unknown", trust: "untrusted" },
+          requestedUse: "answer_with_citation",
+        });
+      },
+      null,
+    ),
+    await measure(
+      "Markdown with embedded HTML guard",
+      async () => {
+        await guard.inspectRaw({
+          rawBody: encoder.encode(markdownMix),
+          contentType: "text/markdown; charset=utf-8",
+          source: { kind: "unknown", trust: "untrusted" },
+          requestedUse: "answer_with_citation",
+        });
+      },
+      null,
     ),
   ];
   process.stdout.write(`${JSON.stringify({ node: process.version, results })}\n`);

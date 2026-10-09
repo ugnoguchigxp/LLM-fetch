@@ -501,12 +501,47 @@ export function loadXml(xml: string, limits: HtmlStructureLimits = {}): CheerioA
   }
 }
 
-export function extractHtmlContent(
+export interface SelectedText {
+  title: string;
+  text: string;
+}
+
+export interface SelectedHtml extends SelectedText {
+  element: AnyNode;
+}
+
+export function selectPlainText(rawText: string): string {
+  return normalizePlainText(rawText);
+}
+
+export function limitExtractedText(
+  text: string,
+  maxCharacters: number,
+): { text: string; truncated: boolean } {
+  if (text.length <= maxCharacters) return { text, truncated: false };
+  return { text: text.slice(0, maxCharacters).trimEnd(), truncated: true };
+}
+
+export function extractedFromSelection(
+  selected: SelectedText,
+  maxCharacters: number,
+): ExtractedContent {
+  const limited = limitExtractedText(selected.text, maxCharacters);
+  const result: ExtractedContent = {
+    title: selected.title,
+    text: limited.text,
+    characterCount: selected.text.length,
+    truncated: limited.truncated,
+  };
+  result.excerpt = limited.text.slice(0, 240);
+  return result;
+}
+
+export function selectHtmlContent(
   $: CheerioAPI,
   finalUrl: string,
-  options: ExtractContentOptions = {},
-): ExtractedContent {
-  const maxCharacters = options.maxCharacters ?? 20_000;
+  options: Pick<ExtractContentOptions, "minCharacters"> = {},
+): SelectedHtml {
   const minCharacters = options.minCharacters ?? 80;
   const title = normalizeInlineText(
     $("meta[property='og:title']").attr("content") ||
@@ -523,6 +558,7 @@ export function extractHtmlContent(
   let bestText = "";
   let bestScore = Number.NEGATIVE_INFINITY;
   let bestRange: CandidateRange | undefined;
+  let bestElement: AnyNode | undefined;
   const candidateElements: AnyNode[] = [];
   const candidateSet = new Set<AnyNode>();
 
@@ -554,6 +590,7 @@ export function extractHtmlContent(
       if (quality.score > bestScore) {
         bestScore = quality.score;
         bestText = metrics.text;
+        bestElement = element;
       }
     };
     for (const element of candidateElements) {
@@ -581,29 +618,25 @@ export function extractHtmlContent(
       if (quality.score > bestScore) {
         bestScore = quality.score;
         bestRange = range;
+        bestElement = element;
       }
     }
     if (bestRange) bestText = index.text(bestRange);
   }
 
-  if (bestText.length < minCharacters) {
+  if (bestText.length < minCharacters || !bestElement) {
     throw new LlmFetchError(
       "CONTENT_INSUFFICIENT",
       "The page did not contain enough readable text.",
-      { url: finalUrl },
+      { url: finalUrl, reasonCode: "INSUFFICIENT_TEXT" },
     );
   }
 
-  const truncated = bestText.length > maxCharacters;
-  const text = truncated ? bestText.slice(0, maxCharacters).trimEnd() : bestText;
-  const result: ExtractedContent = {
+  return {
     title: title || new URL(finalUrl).hostname,
-    text,
-    characterCount: bestText.length,
-    truncated,
+    text: bestText,
+    element: bestElement,
   };
-  if (text) result.excerpt = text.slice(0, 240);
-  return result;
 }
 
 export function extractPlainTextContent(
@@ -613,21 +646,16 @@ export function extractPlainTextContent(
 ): ExtractedContent {
   const maxCharacters = options.maxCharacters ?? 20_000;
   const minCharacters = options.minCharacters ?? 20;
-  const normalized = normalizePlainText(rawText);
+  const normalized = selectPlainText(rawText);
   if (normalized.length < minCharacters) {
     throw new LlmFetchError(
       "CONTENT_INSUFFICIENT",
       "The response did not contain enough readable text.",
-      { url: finalUrl },
+      { url: finalUrl, reasonCode: "INSUFFICIENT_TEXT" },
     );
   }
-  const truncated = normalized.length > maxCharacters;
-  const text = truncated ? normalized.slice(0, maxCharacters).trimEnd() : normalized;
-  return {
-    title: new URL(finalUrl).hostname,
-    text,
-    characterCount: normalized.length,
-    truncated,
-    excerpt: text.slice(0, 240),
-  };
+  return extractedFromSelection(
+    { title: new URL(finalUrl).hostname, text: normalized },
+    maxCharacters,
+  );
 }

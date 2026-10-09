@@ -161,6 +161,22 @@ describe("safe HTTP fetcher", () => {
     ).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
   });
 
+  it("accepts text/markdown and advertises it after HTML", async () => {
+    const body = "# Title\r\n\n- item\r\n";
+    queue.push({ body, headers: { "content-type": "text/markdown; charset=utf-8" } });
+    const fetcher = createSafeHttpFetcher({ resolver });
+    await expect(fetcher("https://example.com/guide")).resolves.toMatchObject({
+      contentType: "text/markdown",
+      body: Buffer.from(body),
+      headers: { "content-type": "text/markdown; charset=utf-8" },
+    });
+    const options = mocks.request.mock.calls[0]?.[1] as RequestOptions;
+    expect(options.headers).toMatchObject({
+      accept:
+        "text/html,application/xhtml+xml,text/plain,application/xml,text/xml;q=0.9,text/markdown;q=0.9",
+    });
+  });
+
   it("rejects unsupported content types without exposing the body", async () => {
     queue.push({ body: "png-data", headers: { "content-type": "image/png" } });
     const fetcher = createSafeHttpFetcher({ resolver });

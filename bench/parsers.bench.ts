@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import { parseDuckDuckGoHtml, parseDuckDuckGoWeb } from "../src/providers/duckduckgo-parser.js";
-import { extractHtmlContent, loadHtml } from "../src/retrieval/extract-content.js";
+import { prepareRetrievedBody } from "../src/retrieval/prepare-retrieved.js";
 import { createInternalBuiltinContextGuard } from "../src/security/context-guard.js";
 
 const results = Array.from(
@@ -24,7 +24,7 @@ const duckWeb = `DDG.pageLayout.load("d", ${JSON.stringify(
 
 const articleParagraph = `<p>${"A bounded TypeScript extraction paragraph with useful factual content. ".repeat(20)}</p>`;
 const articleHtml = `<html><head><title>Large fixture</title></head><body><main>${articleParagraph.repeat(750)}</main></body></html>`;
-const guard = createInternalBuiltinContextGuard();
+const guard = createInternalBuiltinContextGuard({ maxCharacters: 2_000_000 });
 
 test("parsers", async ({ bench }) => {
   await bench("DuckDuckGo 20 results", () => {
@@ -35,16 +35,21 @@ test("parsers", async ({ bench }) => {
     parseDuckDuckGoWeb(duckWeb, 20);
   }).run();
 
-  await bench("HTML extraction with shared guard DOM", () => {
-    const $ = loadHtml(articleHtml);
-    const prepared = guard.prepareHtml($, articleHtml);
-    const extracted = extractHtmlContent($, "https://example.com/fixture", {
+  await bench("HTML inspection and structured Markdown output", () => {
+    const prepared = prepareRetrievedBody({
+      decoded: articleHtml,
+      contentType: "text/html",
+      finalUrl: "https://example.com/fixture",
+      fetchMethod: "http",
       maxCharacters: 20_000,
     });
-    guard.inspectPrepared({
-      visibleText: extracted.text,
-      additionalSegments: prepared.segments,
+    const result = guard.inspectPrepared({
+      ...prepared,
       requestedUse: "answer_with_citation",
     });
+    if (result.decision !== "allow") throw new Error("Benchmark fixture was withheld.");
+    if (prepared.pendingError) throw prepared.pendingError;
+    if (!prepared.extract) throw new Error("Benchmark fixture has no extractor.");
+    prepared.extract();
   }).run();
 });

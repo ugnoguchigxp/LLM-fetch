@@ -1,15 +1,18 @@
-import type { CheerioAPI } from "cheerio";
 import type {
   ContentGuard,
+  GuardReasonCode,
   GuardResult,
+  GuardScanDiagnostics,
   RequestedContextUse,
   SecurityFinding,
   SourceMetadata,
 } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
-import { isAbortSignal } from "../internal/abort-signal.js";
+import { abortReason, isAbortSignal } from "../internal/abort-signal.js";
 import { decodeBody, loadHtml } from "../retrieval/extract-content.js";
+import { orderGuardReasonCodes } from "./guard-codes.js";
 import { prepareHtmlForExtraction, type ContentSegment } from "./html-segments.js";
+import { prepareMarkdownInspection } from "./markdown-segments.js";
 import { decideContextPolicy } from "./policy.js";
 import { scanSegments } from "./rules.js";
 
@@ -25,6 +28,8 @@ export interface PreparedGuardInput {
   requestedUse: RequestedContextUse;
   truncated?: boolean;
   truncationReasons?: readonly string[];
+  stage?: GuardScanDiagnostics["stage"];
+  omittedSegments?: number;
 }
 
 export interface BuiltinContextGuard {
@@ -39,7 +44,6 @@ export interface BuiltinContextGuard {
 }
 
 export interface InternalBuiltinContextGuard extends BuiltinContextGuard {
-  prepareHtml($: CheerioAPI, rawHtml: string): ReturnType<typeof prepareHtmlForExtraction>;
   inspectPrepared(input: PreparedGuardInput): GuardResult;
 }
 
@@ -179,14 +183,16 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
     this.#maxCharacters = maxCharacters;
   }
 
-  prepareHtml($: CheerioAPI, rawHtml: string) {
-    return prepareHtmlForExtraction($, rawHtml);
-  }
-
   inspectPrepared(input: PreparedGuardInput): GuardResult {
     if (!REQUESTED_USES.has(input.requestedUse)) {
       throw new LlmFetchError("INVALID_INPUT", "requestedUse is invalid.");
     }
+    const omittedSegments =
+      typeof input.omittedSegments === "number" &&
+      Number.isSafeInteger(input.omittedSegments) &&
+      input.omittedSegments > 0
+        ? input.omittedSegments
+        : 0;
     const segments: ContentSegment[] = [
       {
         location: "visible",
@@ -201,11 +207,39 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       maxSegments: this.#maxSegments,
       maxCharacters: this.#maxCharacters,
     });
+    const segmentTextLimit = segments.some((segment) => segment.truncated);
+    const specificLimit =
+      scanned.segmentCountLimit ||
+      scanned.characterBudgetLimit ||
+      segmentTextLimit ||
+      omittedSegments > 0;
+    const reasonCodes: GuardReasonCode[] = [];
+    if (scanned.findings.some((finding) => finding.category !== "benign_mention")) {
+      reasonCodes.push("PATTERN_DETECTED");
+    }
+    if (scanned.segmentCountLimit) reasonCodes.push("SEGMENT_COUNT_LIMIT");
+    if (scanned.characterBudgetLimit) reasonCodes.push("CHARACTER_BUDGET_LIMIT");
+    if (segmentTextLimit) reasonCodes.push("SEGMENT_TEXT_LIMIT");
+    if (omittedSegments > 0) reasonCodes.push("SEGMENT_COLLECTION_LIMIT");
+    if (input.truncated === true && !specificLimit) reasonCodes.push("INSPECTION_INCOMPLETE");
+    const truncationReasons = [
+      ...scanned.truncationReasons,
+      ...(omittedSegments > 0
+        ? [`${omittedSegments} content segment(s) were omitted by the collection limit.`]
+        : []),
+      ...(input.truncationReasons ?? []),
+    ];
     return decideContextPolicy({
       findings: scanned.findings,
       requestedUse: input.requestedUse,
-      truncated: scanned.truncated || input.truncated === true,
-      truncationReasons: [...scanned.truncationReasons, ...(input.truncationReasons ?? [])],
+      truncated: scanned.truncated || omittedSegments > 0 || input.truncated === true,
+      truncationReasons: [...new Set(truncationReasons)],
+      reasonCodes: orderGuardReasonCodes(reasonCodes),
+      diagnostics: {
+        ...scanned.diagnostics,
+        stage: input.stage ?? "content",
+        omittedSegments,
+      },
     });
   }
 
@@ -240,31 +274,39 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       if (contentType === "text/html" || contentType === "application/xhtml+xml") {
         const $ = loadHtml(text);
         input.signal?.throwIfAborted();
-        const prepared = this.prepareHtml($, text);
+        const prepared = prepareHtmlForExtraction($, text);
         input.signal?.throwIfAborted();
         return this.inspectPrepared({
           visibleText: $("body").text(),
           additionalSegments: prepared.segments,
           requestedUse: input.requestedUse,
-          truncated: prepared.truncated,
-          truncationReasons:
-            prepared.omittedSegments > 0
-              ? [
-                  `${prepared.omittedSegments} content segment(s) were omitted by the collection limit.`,
-                ]
-              : [],
+          omittedSegments: prepared.omittedSegments,
+          stage: "content",
+        });
+      }
+      if (contentType === "text/markdown") {
+        input.signal?.throwIfAborted();
+        const prepared = prepareMarkdownInspection(text);
+        input.signal?.throwIfAborted();
+        return this.inspectPrepared({
+          visibleText: prepared.visibleText,
+          additionalSegments: prepared.additionalSegments,
+          requestedUse: input.requestedUse,
+          omittedSegments: prepared.omittedSegments,
+          stage: "content",
         });
       }
       return this.inspectPrepared({
         visibleText: text,
         requestedUse: input.requestedUse,
+        stage: "content",
       });
     } catch (error) {
       if (error instanceof LlmFetchError) throw error;
+      if (input.signal?.aborted) throw abortReason(input.signal);
       throw new LlmFetchError(
-        "CONTENT_INSUFFICIENT",
-        "Untrusted content could not be inspected safely.",
-        { cause: error },
+        "GUARD_FAILED",
+        "Untrusted content could not be prepared for inspection.",
       );
     }
   }

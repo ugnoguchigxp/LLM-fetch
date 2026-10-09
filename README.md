@@ -12,7 +12,7 @@ from this repository instead of embedding the npm package. It retrieves pages wi
 
 ## Requirements
 
-- Node.js 20.19 or later, or Bun 1.3.14 or later
+- Node.js 22.18 or later, or Bun 1.3.14 or later
 - ESM or CommonJS
 
 Cheerio is the only direct runtime dependency of the core package. OpenAI SDKs, AWS SDKs, Playwright, and browser binaries are not installed with the core package.
@@ -49,6 +49,44 @@ try {
 ```
 
 `searchAndRead()` fetches successful search hits concurrently, with a default limit of two active reads per host (or one when total concurrency is one). A page-level failure is added to `failures` without discarding other documents. If the overall deadline expires after search, completed documents are retained, `timedOut` becomes `true`, and active or unstarted URLs receive distinct failure kinds. A caller `AbortSignal` and a search-provider failure still reject the operation.
+
+To choose pages before retrieval, search first and read only the URLs you select. `slice` below is a simplified stand-in for that selection, not a ranking algorithm. `text/markdown` responses keep their heading, list, code, and spacing structure in `text`. Search hits and documents stay `untrusted` / `tainted` through the whole flow.
+
+```ts
+import { createLlmFetch, duckDuckGo, LlmFetchError } from "llm-fetch";
+
+const web = createLlmFetch({ search: duckDuckGo() });
+
+const hits = await web.search({
+  query: "TypeScript web retrieval",
+  limit: 5,
+});
+const selected = hits.slice(0, 2);
+const documents = [];
+const failures = [];
+
+for (const hit of selected) {
+  try {
+    documents.push(await web.read({ url: hit.url, maxCharacters: 5_000 }));
+  } catch (error) {
+    if (!(error instanceof LlmFetchError)) throw error;
+    if (error.code === "GUARD_DENIED") {
+      failures.push({
+        url: hit.url,
+        code: error.code,
+        guardDecision: error.guardDecision,
+        guardReasonCodes: error.guardReasonCodes,
+      });
+      continue;
+    }
+    failures.push({ url: hit.url, code: error.code, status: error.status });
+  }
+}
+
+await web.close();
+```
+
+Use `guardReasonCodes` to tell a guard refusal apart from an HTTP or encoding failure. `error.guardDiagnostics` is host-only numeric metadata; do not forward it to a model. `require_approval` is not cleared inside the library.
 
 | API | Purpose |
 | --- | --- |
@@ -178,7 +216,7 @@ const output = await toolset.execute("web_search", {
 
 OpenAI and AWS SDKs are not runtime dependencies. Tool definitions are plain JSON objects.
 
-`web_search` returns five results by default and bounds every external title and snippet. Results with high-severity injection patterns are withheld. `fetch_content` returns 5,000 visible characters by default and has a model-facing maximum of 20,000. Its output contains the citation URL, readable text, retrieval time, truncation state, and compact security metadata. It does not expose page HTML, scripts, styles, event attributes, hidden content, raw response metadata, or verbose guard diagnostics.
+`web_search` returns five results by default and bounds every external title and snippet. The model can then choose URLs and call `fetch_content`. Results with high-severity injection patterns are withheld. `fetch_content` returns 5,000 characters by default and has a model-facing maximum of 20,000. HTML and XHTML are returned as structured Markdown, preserving heading levels, nested lists, tables, code, and links. Embedded HTML in Markdown is converted too; literal tags in code examples stay code data. The tool result contains the citation URL, text, retrieval time, truncation state, and compact security metadata, including `reasonCodes` when the guard produced them. Formatting excludes scripts, styles, attributes, and hidden elements after the original inspection material has passed the guard. Simple tables use Markdown rows; merged or complex cells use row/column records with explicit spans, without repeating cell contents or falling back to HTML. The source `contentType` is unchanged. This remains untrusted text. Raw response metadata and guard diagnostics are not included in tool results.
 
 Every lower-level `SearchHit` and `searchAndRead().hits` entry is marked `trust: "untrusted"` and `tainted: true`. Titles and snippets remain external data; do not concatenate them into system instructions. Prefer `toolset()` when search output will be sent to a model. `openaiDefinitions()` remains a deprecated alias for the Chat Completions format.
 
@@ -186,7 +224,7 @@ Every lower-level `SearchHit` and `searchAndRead().hits` entry is marked `trust:
 
 Every retrieved document is marked `trust: "untrusted"` and `tainted: true`, including documents with no findings. The built-in guard cannot be disabled.
 
-The guard separates visible text, hidden content, comments, metadata, templates, and low-trust attributes. It performs bounded normalization of Unicode, zero-width characters, URL/hex escapes, Base64, delimiter splitting, and leetspeak. Segment head and tail samples are retained when a segment is too long; any omitted segment or character range makes the decision fail closed and is reported in `limitations`. HTTP charset, BOM, and HTML metadata use one decoder in both the client and standalone guard, with BOM taking precedence. Unsupported or invalid encodings return `UNSUPPORTED_CONTENT_ENCODING`.
+The guard separates visible text, hidden content, comments, metadata, templates, and low-trust attributes. Markdown is scanned as text, and any `<` also opens an additional HTML projection so hidden markup is not skipped. It performs bounded normalization of Unicode, zero-width characters, URL/hex escapes, Base64, delimiter splitting, and leetspeak. When the selected text fits in the character budget, each selected segment is scanned in full. A segment that still exceeds its share keeps a head and tail sample. Any omitted segment or character range fails closed. Built-in results include stable `reasonCodes` and bounded numeric `diagnostics`. HTTP charset, BOM, and HTML metadata use one decoder in both the client and standalone guard, with BOM taking precedence. Unsupported or invalid encodings return `UNSUPPORTED_CONTENT_ENCODING`.
 
 Use the strict profile when selected medium-severity findings should be raised:
 
@@ -219,11 +257,11 @@ try {
 
 Built-in providers and transports do not include fetched HTML, search response bodies, cookies, or API keys in error messages. Custom implementations should preserve the same rule.
 
-For `GUARD_DENIED`, `guardDecision` distinguishes `require_approval` from `deny`, and `warningCategories` contains only bounded category names. JSON serialization excludes the fetched body and error cause. See the [API and error reference](./docs/API.md) for defaults and recommended handling.
+For `GUARD_DENIED`, `guardDecision` distinguishes `require_approval` from `deny`, `warningCategories` contains only bounded category names, and `guardReasonCodes` explains pattern matches and inspection limits. `toJSON()` includes those codes and omits `guardDiagnostics`, the fetched body, and `cause`. `CONTENT_INSUFFICIENT` may include `reasonCode` of `INSUFFICIENT_TEXT` or `DYNAMIC_RENDERING_REQUIRED`. See the [API and error reference](./docs/API.md) for defaults and recommended handling.
 
 ## Limitations and responsible use
 
-HTML extraction does not include Shadow DOM, generated CSS content, canvas or image text, iframe bodies, or external stylesheet content. Only standard HTTP and HTTPS ports are accepted. Browser mode executes third-party JavaScript. Search queries are sent to the selected provider, while target sites receive network metadata such as the caller's IP, User-Agent, and access time. Review provider and site terms, robots guidance, access frequency, privacy, personal-data, and copyright obligations. See [Responsible use and privacy](./docs/RESPONSIBLE_USE.md).
+Returned Markdown remains untrusted. UI consumers must enforce their own Markdown rendering and URL policies. HTML extraction does not include Shadow DOM, generated CSS content, canvas or image text, iframe bodies, or external stylesheet content. PDF and Office documents are not supported. Markdown represents readable structure rather than visual layout; complex tables use records, and return limits can end inside code fences or links. An original inline-code terminator is preserved within the limit when truncating a code span. Formatting is bounded to 2,000,000 characters and 1,024 table columns. Raising an inspection limit does not certify that the page is safe. Only standard HTTP and HTTPS ports are accepted. Browser mode executes third-party JavaScript. Search queries are sent to the selected provider, while target sites receive network metadata such as the caller's IP, User-Agent, and access time. Review provider and site terms, robots guidance, access frequency, privacy, personal-data, and copyright obligations. See [Responsible use and privacy](./docs/RESPONSIBLE_USE.md).
 
 `close()` is idempotent. Once closing begins, the client cannot be reused and new operations return `CONFIG_MISSING`.
 

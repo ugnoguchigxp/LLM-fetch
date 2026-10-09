@@ -1,4 +1,10 @@
-import type { GuardDecision, SecurityFindingCategory } from "./contracts.js";
+import type {
+  GuardDecision,
+  GuardReasonCode,
+  GuardScanDiagnostics,
+  SecurityFindingCategory,
+} from "./contracts.js";
+import { sanitizeGuardDiagnostics, sanitizeGuardReasonCodes } from "./security/guard-codes.js";
 
 export type LlmFetchErrorCode =
   | "INVALID_INPUT"
@@ -17,6 +23,8 @@ export type LlmFetchErrorCode =
   | "GUARD_DENIED"
   | "UNKNOWN";
 
+export type ContentInsufficiencyReasonCode = "INSUFFICIENT_TEXT" | "DYNAMIC_RENDERING_REQUIRED";
+
 export interface LlmFetchErrorOptions extends ErrorOptions {
   provider?: string;
   url?: string;
@@ -25,6 +33,9 @@ export interface LlmFetchErrorOptions extends ErrorOptions {
   cooldownMs?: number;
   guardDecision?: Extract<GuardDecision, "require_approval" | "deny">;
   warningCategories?: readonly SecurityFindingCategory[];
+  guardReasonCodes?: readonly GuardReasonCode[];
+  guardDiagnostics?: readonly GuardScanDiagnostics[];
+  reasonCode?: ContentInsufficiencyReasonCode;
 }
 
 export class LlmFetchError extends Error {
@@ -36,6 +47,9 @@ export class LlmFetchError extends Error {
   readonly cooldownMs?: number;
   readonly guardDecision?: Extract<GuardDecision, "require_approval" | "deny">;
   readonly warningCategories?: readonly SecurityFindingCategory[];
+  readonly guardReasonCodes?: readonly GuardReasonCode[];
+  readonly guardDiagnostics?: readonly GuardScanDiagnostics[];
+  readonly reasonCode?: ContentInsufficiencyReasonCode;
 
   constructor(code: LlmFetchErrorCode, message: string, options: LlmFetchErrorOptions = {}) {
     super(message, { cause: options.cause });
@@ -51,6 +65,17 @@ export class LlmFetchError extends Error {
     }
     if (options.warningCategories !== undefined) {
       this.warningCategories = Object.freeze([...new Set(options.warningCategories)]);
+    }
+    const guardReasonCodes = sanitizeGuardReasonCodes(options.guardReasonCodes);
+    if (guardReasonCodes !== undefined) this.guardReasonCodes = guardReasonCodes;
+    const guardDiagnostics = sanitizeGuardDiagnostics(options.guardDiagnostics);
+    if (guardDiagnostics !== undefined) this.guardDiagnostics = guardDiagnostics;
+    if (
+      code === "CONTENT_INSUFFICIENT" &&
+      (options.reasonCode === "INSUFFICIENT_TEXT" ||
+        options.reasonCode === "DYNAMIC_RENDERING_REQUIRED")
+    ) {
+      this.reasonCode = options.reasonCode;
     }
   }
 
@@ -68,6 +93,10 @@ export class LlmFetchError extends Error {
       ...(this.warningCategories === undefined
         ? {}
         : { warningCategories: [...this.warningCategories] }),
+      ...(this.guardReasonCodes === undefined
+        ? {}
+        : { guardReasonCodes: [...this.guardReasonCodes] }),
+      ...(this.reasonCode === undefined ? {} : { reasonCode: this.reasonCode }),
     };
   }
 }

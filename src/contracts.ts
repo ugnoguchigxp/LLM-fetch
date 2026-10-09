@@ -78,12 +78,35 @@ export interface SecurityFinding {
 
 export type GuardDecision = "allow" | "allow_with_warning" | "require_approval" | "deny";
 
+export type GuardReasonCode =
+  | "PATTERN_DETECTED"
+  | "SEGMENT_COUNT_LIMIT"
+  | "CHARACTER_BUDGET_LIMIT"
+  | "SEGMENT_TEXT_LIMIT"
+  | "SEGMENT_COLLECTION_LIMIT"
+  | "INSPECTION_INCOMPLETE"
+  | "ADDITIONAL_GUARD_RESTRICTION";
+
+export interface GuardScanDiagnostics {
+  stage: "content" | "reference" | "search_result";
+  segmentCount: number;
+  selectedSegmentCount: number;
+  scannedSegmentCount: number;
+  availableCharacters: number;
+  scannedCharacters: number;
+  maxSegments: number;
+  maxCharacters: number;
+  omittedSegments: number;
+}
+
 export interface GuardResult {
   findings: SecurityFinding[];
   assurance: "unassessed" | "low" | "medium" | "high";
   decision: GuardDecision;
   reasons: string[];
   limitations: string[];
+  reasonCodes?: readonly GuardReasonCode[];
+  diagnostics?: readonly GuardScanDiagnostics[];
 }
 
 export interface SourceMetadata {
@@ -149,6 +172,8 @@ export interface RetrievedDocument {
     decision: GuardDecision;
     reasons: string[];
     limitations: string[];
+    reasonCodes?: readonly GuardReasonCode[];
+    diagnostics?: readonly GuardScanDiagnostics[];
   };
 }
 
