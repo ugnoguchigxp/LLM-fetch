@@ -95,7 +95,7 @@
     "verify:guard-e2e": "npm run build && node --enable-source-maps scripts/guard-e2e.mjs"
   },
   "dependencies": {
-    "@types/node": "^24.13.4",
+    "@types/node": "^26.6.1",
     "cheerio": "^1.2.0"
   },
   "devDependencies": {
