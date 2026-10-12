@@ -63,44 +63,183 @@ describe("HTML-free structured Markdown", () => {
     expect(convert("<table><caption>Empty</caption></table>")).toBe("Empty");
   });
 
-  it("preserves merged-cell coordinates without duplication or HTML fallback", () => {
+  it("expands merged cells while keeping values beneath their headers", () => {
     const result = convert(
       '<table><tr><th>Group</th><th colspan="2">Values</th></tr><tr><td rowspan="2">Shared label</td><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>',
     );
-    expect(result).toContain("Column 2–3; header: Values");
-    expect(result).toContain("Column 1; rows 2–3: Shared label");
-    expect(result).toContain("- Row 3\n  - Column 2: C\n  - Column 3: D");
-    expect(result.match(/Shared label/g)).toHaveLength(1);
+    expect(result).toBe(
+      "|Group|Values|Values|\n|---|---|---|\n|Shared label|A|B|\n|Shared label|C|D|",
+    );
     expect(result).not.toMatch(/<\/?(?:table|tr|td|th)\b/);
   });
 
-  it("represents ragged, nested, multiline, and zero-rowspan tables without raw tags", () => {
+  it("uses pipe tables for paragraph cells and pads missing cells without losing values", () => {
+    expect(convert("<table><tr><td>A</td></tr><tr><td>B</td><td>C</td></tr></table>")).toBe(
+      "|Column 1|Column 2|\n|---|---|\n|A||\n|B|C|",
+    );
+    expect(
+      convert(
+        "<table><tr><th>Time</th><th>Temperature</th></tr><tr><td><p>09:00</p></td><td><p>18.5</p><p>℃</p></td></tr></table>",
+      ),
+    ).toBe("|Time|Temperature|\n|---|---|\n|09:00|18.5 ℃|");
+  });
+
+  it("splits wide column-header tables with the row identifier and exact header-value pairs", () => {
+    const header = Array.from({ length: 24 }, (_, index) => `<th>Hour ${index + 1}</th>`).join("");
+    const values = Array.from({ length: 24 }, (_, index) => `<td>${index + 0.5}</td>`).join("");
+    const result = convert(
+      `<table><tr><th>Metric</th>${header}</tr><tr><th>Temperature</th>${values}</tr></table>`,
+    );
+    const blocks = result.split("\n\n");
+    expect(blocks).toHaveLength(3);
+    let hour = 1;
+    for (const block of blocks) {
+      const [head, separator, body] = block.split("\n").map((line) => line.slice(1, -1).split("|"));
+      expect(head![0]).toBe("Metric");
+      expect(body![0]).toBe("Temperature");
+      expect(head!.length).toBeLessThanOrEqual(12);
+      expect(separator).toHaveLength(head!.length);
+      for (let column = 1; column < head!.length; column++, hour++) {
+        expect(head![column]).toBe(`Hour ${hour}`);
+        expect(body![column]).toBe(String(hour - 0.5));
+      }
+    }
+    expect(hour).toBe(25);
+  });
+
+  it("keeps linked headings and table values inside otherwise link-heavy containers", () => {
+    const result = convert(
+      '<div><a href="/headline"><h2>Headline</h2></a><table><tr><th>Value</th></tr><tr><td><p><a href="/value">18.5</a></p></td></tr></table></div>',
+    );
+    expect(result).toContain("## Headline");
+    expect(result).toContain("|Value|\n|---|\n|18.5|");
+  });
+
+  it("deduplicates adjacent icon labels without deleting repeated numeric values or prefix labels", () => {
+    expect(convert('<div><img alt="晴"><p>晴</p><img alt="日の出">日の出｜05時45分</div>')).toBe(
+      "晴\n\n日の出｜05時45分",
+    );
+    expect(convert('<p><img alt="北">北北西</p>')).toBe("北北北西");
+    expect(convert("<table><tr><td>0</td><td>0</td></tr></table>")).toContain("|0|0|");
+    expect(convert('<img alt="Only image value">')).toBe("Only image value");
+  });
+
+  it("deduplicates icon-only subrows only when the displayed value matches", () => {
+    const icons = '<td><img alt="10"></td>'.repeat(13);
+    const displayed = "<td>10</td>".repeat(12) + "<td>11</td>";
+    const result = convert(
+      `<table><tr><th rowspan="2">Reading</th>${icons}</tr><tr>${displayed}</tr></table>`,
+    );
+    expect(result).toContain("|Reading|\n|---|");
+    expect(result.match(/\|10\|/g)).toHaveLength(12);
+    expect(result).toContain("|10 / 11|");
+    expect(result).not.toContain("10 / 10");
+  });
+
+  it("represents nested, code, and list tables without raw tags", () => {
     for (const html of [
-      '<table><tr><td rowspan="0">Shared</td><td>A</td></tr><tr><td>B</td></tr></table>',
-      "<table><tr><td>A</td></tr><tr><td>B</td><td>C</td></tr></table>",
       "<table><tr><td><table><tr><td>Nested</td></tr></table></td></tr></table>",
-      "<table><tr><td><p>One</p><p>Two</p></td></tr></table>",
+      "<table><tr><td><pre>  const x = 1;</pre></td></tr></table>",
+      "<table><tr><td><ul><li>One</li><li>Two</li></ul></td></tr></table>",
     ]) {
       const result = convert(html);
       expect(result).toContain("Row 1");
       expect(result).not.toContain("<table");
     }
     expect(convert('<table><tr><td colspan="bad">Value</td></tr></table>')).toContain("|Value|");
+    expect(
+      convert('<table><tr><td rowspan="0">Shared</td><td>A</td></tr><tr><td>B</td></tr></table>'),
+    ).toBe("|Column 1|Column 2|\n|---|---|\n|Shared|A|\n|Shared|B|");
+  });
+
+  it("omits semantic navigation in both HTML and mixed Markdown", () => {
+    const html =
+      '<nav><a href="/menu">Menu</a></nav><div role="NAVIGATION"><a href="/home">Home</a></div><p>Body content.</p>';
+    expect(convert(html)).toBe("Body content.");
+    expect(mixed(`# Guide\n\n${html}`)).toBe("# Guide\n\nBody content.");
+  });
+
+  it("retains nested link-heavy information as labels in HTML and mixed Markdown", () => {
+    for (const tag of ["ul", "ol", "div", "section"]) {
+      const content =
+        '<a href="/forecast?very=long">Forecast</a><span> / </span><a href="/radar?very=long">Radar</a>';
+      const html =
+        tag === "ul" || tag === "ol"
+          ? `<${tag}><li>${content}<ul><li><a href="/more">More</a></li></ul></li></${tag}>`
+          : `<${tag}><div>${content}</div></${tag}>`;
+      for (const result of [convert(html), mixed(`# Guide\n\n${html}`)]) {
+        expect(result).toContain("Forecast / Radar");
+        if (tag === "ul" || tag === "ol") expect(result).toContain("More");
+        expect(result).not.toContain("https://");
+        expect(result).not.toContain("very=long");
+      }
+    }
+  });
+
+  it("keeps URLs in prose references and only labels in standalone links", () => {
+    const result = convert(
+      '<main><p>A detailed explanation of the measurements with <a href="/docs">Docs</a> and <a href="/data">Data</a> for further reading.</p><ul><li>Use the <a href="/method">Method</a> to interpret measured temperatures.</li><li>Read the <a href="/results">Results</a> for the complete monthly comparison.</li></ul><p><a href="/reference">Reference</a></p></main>',
+    );
+    for (const destination of ["docs", "data", "method", "results"])
+      expect(result).toContain(`https://example.com/${destination}`);
+    expect(result).toContain("Reference");
+    expect(result).not.toContain("https://example.com/reference");
+    expect(convert('<a href="/3hours.html">3-hour forecast</a>')).toBe("3-hour forecast");
+    expect(
+      convert('<p><a href="https://example.com/source">https://example.com/source</a></p>'),
+    ).toBe("https://example.com/source");
+  });
+
+  it.each(["ul", "ol", "div", "section", "p", "aside", "footer"])(
+    "omits explicitly declared navigation while retaining the same unmarked content: %s",
+    (tag) => {
+      const content = '<a href="/one">One</a> / <a href="/two">Two</a>';
+      const body = tag === "ul" || tag === "ol" ? `<li>${content}</li>` : content;
+      for (const render of [convert, mixed]) {
+        expect(render(`<${tag} role=" NAVIGATION ">${body}</${tag}><p>Body content.</p>`)).toBe(
+          "Body content.",
+        );
+        expect(render(`<${tag}>${body}</${tag}><p>Body content.</p>`)).toContain("One / Two");
+      }
+    },
+  );
+
+  it.each([
+    "Alpha / Beta",
+    "Team A 1 — 4 Team B",
+    "Workshop · Room C · 09:00",
+    "Item D · available · ¥1,200",
+  ])("preserves link-wrapped records independently of their words or values: %s", (text) => {
+    for (const container of ["div", "section", "ul", "ol"]) {
+      const record = `<a href="/detail?tracking=long"><div>${text}</div></a>`;
+      const html = `<${container} id="menu" class="navigation footer">${
+        container === "ul" || container === "ol" ? `<li>${record}</li>` : record
+      }</${container}>`;
+      for (const result of [convert(html), mixed(html)]) {
+        expect(result).toContain(text);
+        expect(result).not.toContain("tracking=");
+        expect(result).not.toContain("https://");
+      }
+    }
   });
 
   it("resolves relative links and retains labels for unsupported URI schemes", () => {
     expect(
       convert(
-        '<p><a href="../reference?q=1&amp;x=2">Docs</a> and <a href="#install">Install</a></p>',
+        '<p>Read the full technical explanation in <a href="../reference?q=1&amp;x=2">Docs</a> and <a href="#install">Install</a> for the setup procedure.</p>',
       ),
     ).toContain("[Docs](https://example.com/reference?q=1&x=2)");
-    expect(convert('<a href="mailto:reader@example.com">Email</a>')).toBe(
-      "[Email](mailto:reader@example.com)",
-    );
+    expect(
+      convert(
+        '<p>Contact the editor for further information via <a href="mailto:reader@example.com">Email</a>.</p>',
+      ),
+    ).toContain("[Email](mailto:reader@example.com)");
     for (const href of ["javascript:alert(1)", "data:text/html,example", "http://[", ""]) {
       expect(convert(`<a href="${href}">Reference</a>`)).toBe("Reference");
     }
-    expect(convert('<a href="/a(b)">Parentheses</a>')).toContain("/a%28b%29");
+    expect(
+      convert('<p>The complete reference is available at <a href="/a(b)">Parentheses</a>.</p>'),
+    ).toContain("/a%28b%29");
   });
 
   it("preserves emphasis, quotes, breaks, alt text and readable custom elements", () => {
@@ -205,7 +344,9 @@ describe("HTML-free structured Markdown", () => {
   });
 
   it("does not interpret code characters inside HTML attributes as Markdown", () => {
-    const result = mixed('<a href="/`&lt;script&gt;`">Reference</a>\n\n<p>Ending.</p>');
+    const result = mixed(
+      '<p>See the complete technical explanation in <a href="/`&lt;script&gt;`">Reference</a>.</p>\n\n<p>Ending.</p>',
+    );
     expect(result).not.toContain("<script>");
     expect(result).toContain("%3Cscript%3E");
     const pre = mixed("<pre>```\n&lt;div&gt;code&lt;/div&gt;\n```</pre>\n\n<p>Ending.</p>");
@@ -218,6 +359,14 @@ describe("HTML-free structured Markdown", () => {
     );
     expect(() =>
       convert('<table><tr><td colspan="1000">A</td><td colspan="1000">B</td></tr></table>'),
+    ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
+    expect(() =>
+      convert(`<table><tr><td colspan="1000">${"x".repeat(3_000)}</td></tr></table>`),
+    ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
+    expect(() =>
+      convert(
+        `<table><tr><td colspan="1000">A</td></tr>${"<tr><td>B</td></tr>".repeat(1_001)}</table>`,
+      ),
     ).toThrowError(expect.objectContaining({ code: "RESPONSE_TOO_LARGE" }));
   });
 });

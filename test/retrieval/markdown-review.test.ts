@@ -100,7 +100,7 @@ describe("Markdown output review regressions", () => {
     );
     expect(result).toContain("## Details\n\nReference text.");
     expect(result).toContain("```\n<div>code</div>\n```");
-    expect(result).toContain("[Link](https://example.com/details)");
+    expect(result).not.toContain("https://example.com/details");
   });
 
   it("does not corrupt a code block when recovering unusual HTML nesting", () => {
@@ -123,9 +123,7 @@ describe("Markdown output review regressions", () => {
   );
 
   it("keeps a linked heading as a heading and a single linked pre as code", () => {
-    expect(html('<a href="/details"><h2>Details</h2></a>')).toBe(
-      "## [Details](https://example.com/details)",
-    );
+    expect(html('<a href="/details"><h2>Details</h2></a>')).toBe("## Details");
     expect(html('<a href="/details"><pre>&lt;div&gt;literal&lt;/div&gt;</pre></a>')).toContain(
       "```\n<div>literal</div>\n```",
     );

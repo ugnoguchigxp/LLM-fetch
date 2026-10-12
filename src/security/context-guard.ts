@@ -13,17 +13,20 @@ import { decodeBody, loadHtml } from "../retrieval/extract-content.js";
 import { orderGuardReasonCodes } from "./guard-codes.js";
 import { prepareHtmlForExtraction, type ContentSegment } from "./html-segments.js";
 import { prepareMarkdownInspection } from "./markdown-segments.js";
+import { prepareJsonInspection } from "./json-segments.js";
 import { decideContextPolicy } from "./policy.js";
 import { scanSegments } from "./rules.js";
 
 export interface BuiltinContextGuardOptions {
   profile?: "balanced" | "strict";
+  /** Optional hard count limit. Omit to inspect all collected segments within maxCharacters. */
   maxSegments?: number;
   maxCharacters?: number;
 }
 
 export interface PreparedGuardInput {
   visibleText: string;
+  structuralLines?: boolean;
   additionalSegments?: ContentSegment[];
   requestedUse: RequestedContextUse;
   truncated?: boolean;
@@ -153,7 +156,7 @@ function validateGuardResult(value: unknown): GuardResult {
 class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
   readonly name = "builtin" as const;
   readonly #profile: "balanced" | "strict";
-  readonly #maxSegments: number;
+  readonly #maxSegments: number | undefined;
   readonly #maxCharacters: number;
 
   constructor(options: BuiltinContextGuardOptions = {}) {
@@ -161,12 +164,15 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       throw new LlmFetchError("INVALID_INPUT", "Context Guard options must be an object.");
     }
     const profile = options.profile ?? "balanced";
-    const maxSegments = options.maxSegments ?? 128;
+    const maxSegments = options.maxSegments;
     const maxCharacters = options.maxCharacters ?? 250_000;
     if (profile !== "balanced" && profile !== "strict") {
       throw new LlmFetchError("INVALID_INPUT", "Context Guard profile is invalid.");
     }
-    if (!Number.isInteger(maxSegments) || maxSegments < 1 || maxSegments > 4_096) {
+    if (
+      maxSegments !== undefined &&
+      (!Number.isInteger(maxSegments) || maxSegments < 1 || maxSegments > 4_096)
+    ) {
       throw new LlmFetchError(
         "INVALID_INPUT",
         "Context Guard maxSegments must be an integer between 1 and 4096.",
@@ -199,12 +205,13 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
         text: input.visibleText,
         truncated: false,
         originalLength: input.visibleText.length,
+        structuralLines: input.structuralLines ?? false,
       },
       ...(input.additionalSegments ?? []),
     ];
     const scanned = scanSegments(segments, {
       profile: this.#profile,
-      maxSegments: this.#maxSegments,
+      ...(this.#maxSegments === undefined ? {} : { maxSegments: this.#maxSegments }),
       maxCharacters: this.#maxCharacters,
     });
     const segmentTextLimit = segments.some((segment) => segment.truncated);
@@ -271,6 +278,14 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       const text = decodeBody(input.rawBody, input.contentType);
       input.signal?.throwIfAborted();
       const contentType = input.contentType.split(";", 1)[0]?.trim().toLowerCase();
+      if (contentType === "application/json") {
+        return this.inspectPrepared({
+          ...prepareJsonInspection(text),
+          structuralLines: true,
+          requestedUse: input.requestedUse,
+          stage: "content",
+        });
+      }
       if (contentType === "text/html" || contentType === "application/xhtml+xml") {
         const $ = loadHtml(text);
         input.signal?.throwIfAborted();
@@ -290,6 +305,7 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
         input.signal?.throwIfAborted();
         return this.inspectPrepared({
           visibleText: prepared.visibleText,
+          structuralLines: true,
           additionalSegments: prepared.additionalSegments,
           requestedUse: input.requestedUse,
           omittedSegments: prepared.omittedSegments,

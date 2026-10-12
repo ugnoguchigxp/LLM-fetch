@@ -20,6 +20,7 @@ import {
 
 export interface PreparedRetrievedBody {
   visibleText: string;
+  structuralLines?: boolean;
   additionalSegments: ContentSegment[];
   omittedSegments: number;
   extracted?: ExtractedContent;
@@ -144,6 +145,7 @@ function markdownBody(
   const material = prepareMarkdownInspection(decoded);
   const base = {
     visibleText: material.visibleText,
+    structuralLines: true,
     additionalSegments: material.additionalSegments,
     omittedSegments: material.omittedSegments,
   };

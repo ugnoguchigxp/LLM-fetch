@@ -1,0 +1,37 @@
+{
+  "tenki-daily": {
+    "url": "https://tenki.jp/forecast/3/17/4610/14204/",
+    "capturedAt": "2026-10-12",
+    "sourceSha256": "64fcc4b50a6734b6c2b0c1627fb2a3ae14a7b58d371d8af06af5d118b7a53328",
+    "baselineCharacters": 8862,
+    "inspectionSha256": "d5cf2fff5d70c6c97d2e033b9e7ade4ea16e58d152dc07b494e43a51ddf5bd71"
+  },
+  "tenki-hourly": {
+    "url": "https://tenki.jp/forecast/3/17/4610/14204/1hour.html",
+    "capturedAt": "2026-10-12",
+    "sourceSha256": "73eed7f3633765ce13d5822d9f45240c46c0a37055bc208b4571ba9988cdedb6",
+    "baselineCharacters": 26061,
+    "inspectionSha256": "59b642d4517b350e64dbb5dd1424fc621639411d94c4f4eca5caabf01e497a29"
+  },
+  "wikipedia-paragraph": {
+    "url": "https://en.wikipedia.org/wiki/Paragraph",
+    "capturedAt": "2026-10-12",
+    "sourceSha256": "371e767592d3fbea1d798f1c3e0c0b3ea3f0351df6a636ba4235695a2699ce0c",
+    "baselineCharacters": 34033,
+    "inspectionSha256": "c811eddd601b9f2b4f46ba14a7ce16a11e8e006486d238a6fd22ce5121c02191"
+  },
+  "nasa-news": {
+    "url": "https://www.nasa.gov/missions/mars-science-laboratory/curiosity-rover/nasas-curiosity-rover-catches-stunning-martian-dawn/",
+    "capturedAt": "2026-10-12",
+    "sourceSha256": "33e5c53a5624ce62df85cd2a164f2277dd62f161e6b48ac8f0ecf0b8ed7d03f5",
+    "baselineCharacters": 8655,
+    "inspectionSha256": "11b85aa567f6d61721263fb82c9a491fb492788c42fcf411e90bd6933577974d"
+  },
+  "npb-results": {
+    "url": "https://npb.jp/bis/2026/games/",
+    "capturedAt": "2026-10-12",
+    "sourceSha256": "4f47145c1bda31f028d3e7d5e984f3bf741b5a824143bd0ec6df8b85a1241edc",
+    "baselineCharacters": 125,
+    "inspectionSha256": "4694679f1e4cadfae1e3608f6d3d9624dbdf1325b3f5a85f54e51f0e40771bcd"
+  }
+}

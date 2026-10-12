@@ -3,8 +3,8 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-const COORDINATED_START: &str = r##"(?i)^[\s"'“”‘’`*>#-]*(?:please\s+)?(?:ignore|disregard|reveal|show|print|output|send|post|upload|call|invoke|execute|run|launch|open|remember|store|save|write|persist|add|change|update|disable|remove|bypass|override)\b"##;
-const JAPANESE_REQUEST: &str = r##"^(?:にして|にし|して|し|を)?(?:ください|下さい|なさい|ろ|せよ|すること|するよう|して(?:[\s。！？.!?]|$)|しよう|せんか)|^(?:け|くこと|いてください|きなさい|き込んで|込んで|び出して|び出せ)"##;
+const COORDINATED_START: &str = r##"(?i)^[\s"'“”‘’`*>#-]*(?:please\s+)?(?:ignore|disregard|forget|discard|reveal|show|print|output|send|post|upload|call|invoke|execute|run|launch|open|remember|store|save|write|persist|add|change|update|disable|remove|bypass|override|omit|hide)\b"##;
+const JAPANESE_REQUEST: &str = r##"^(?:にして|にし|して|し|を)?(?:ください|下さい|なさい|ろ|せよ|すること|するよう|して(?:[\s。！？.!?]|$)|しよう|せんか)|^(?:け|くこと|いてください|きなさい|き込んで|込んで|び出して|び出せ)|^(?:て|で)(?:ください|下さい|[\s、。！？,.!?]|$)"##;
 const REFERENCE: &str =
     r##"(?i)\b(?:it|them|this|that|these|those)\b|(?:それ|これ|その値|この値|上記|前述)"##;
 const NLP_TOKEN_SUFFIX: &str = r##"(?i)^\s*(?:probabilit\w*|embedding\w*|representation\w*|sequence\w*|count\w*|length\w*|prediction\w*|distribution\w*|vocabular\w*|ization)\b|^(?:の)?(?:確率|埋め込み|表現|列|数|長|予測|分布|化)"##;
@@ -61,6 +61,13 @@ pub struct DirectiveRule {
     action: Regex,
     target: Regex,
     secret: bool,
+    direct_target: bool,
+}
+
+impl DirectiveRule {
+    pub fn direct_target(&self) -> bool {
+        self.direct_target
+    }
 }
 
 pub fn compile(action: &[&str], target: &[&str], secret: bool) -> DirectiveRule {
@@ -86,7 +93,65 @@ pub fn compile(action: &[&str], target: &[&str], secret: bool) -> DirectiveRule 
         action: group(action, false),
         target: group(target, true),
         secret,
+        direct_target: false,
     }
+}
+
+pub fn compile_patterns(action: &str, target: &str) -> DirectiveRule {
+    DirectiveRule {
+        action: Regex::new(&format!("(?i){action}")).expect("valid directive action"),
+        target: Regex::new(&format!("(?i){target}")).expect("valid directive target"),
+        secret: false,
+        direct_target: true,
+    }
+}
+
+static DIRECT_OBJECT_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^\s*(?:(?:the|a|an|all|any|every|each|your|our|my|these|those)\s+)*$").unwrap()
+});
+static JAPANESE_OBJECT_LINK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[\sをはもにの]*(?:(?:すべて|全て|全部|一切)[\sをはもにの]*)?$").unwrap()
+});
+static PARAGRAPH_BOUNDARIES: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\n[ \t\r]*\n").unwrap());
+
+struct TextUnit<'a> {
+    text: &'a str,
+    start: usize,
+}
+
+impl<'a> TextUnit<'a> {
+    fn as_str(&self) -> &'a str {
+        self.text
+    }
+    fn start(&self) -> usize {
+        self.start
+    }
+}
+
+fn text_units(text: &str, direct_target: bool) -> Vec<TextUnit<'_>> {
+    let mut units = Vec::new();
+    for unit in UNITS.find_iter(text) {
+        let mut start = 0;
+        if direct_target {
+            for boundary in PARAGRAPH_BOUNDARIES.find_iter(unit.as_str()) {
+                if boundary.start() > start {
+                    units.push(TextUnit {
+                        text: &unit.as_str()[start..boundary.start()],
+                        start: unit.start() + start,
+                    });
+                }
+                start = boundary.end();
+            }
+        }
+        if start < unit.as_str().len() {
+            units.push(TextUnit {
+                text: &unit.as_str()[start..],
+                start: unit.start() + start,
+            });
+        }
+    }
+    units
 }
 
 fn target_match<'a>(rule: &DirectiveRule, text: &'a str) -> Option<regex::Match<'a>> {
@@ -98,7 +163,10 @@ fn target_match<'a>(rule: &DirectiveRule, text: &'a str) -> Option<regex::Match<
 }
 
 pub fn match_directive(rule: &DirectiveRule, text: &str) -> Option<(usize, usize)> {
-    let units = UNITS.find_iter(text).collect::<Vec<_>>();
+    if !rule.action.is_match(text) || !rule.target.is_match(text) {
+        return None;
+    }
+    let units = text_units(text, rule.direct_target);
     let references = units
         .iter()
         .filter_map(|unit| {
@@ -122,6 +190,12 @@ pub fn match_directive(rule: &DirectiveRule, text: &str) -> Option<(usize, usize
         boundaries.sort_unstable();
         let mut boundary_index = 0;
         let mut boundary = 0;
+        let unit_targets = if rule.direct_target {
+            rule.target.find_iter(unit.as_str()).collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let mut target_index = 0;
         for verb in rule.action.find_iter(unit.as_str()) {
             while boundary_index < boundaries.len() && boundaries[boundary_index] <= verb.start() {
                 boundary = boundaries[boundary_index];
@@ -148,24 +222,62 @@ pub fn match_directive(rule: &DirectiveRule, text: &str) -> Option<(usize, usize
             let suffix = &unit.as_str()[verb.end()..];
             let japanese = !verb.as_str().is_ascii();
             if if japanese {
-                !GRAMMAR[1].is_match(suffix)
+                !(GRAMMAR[1].is_match(suffix)
+                    || (verb.as_str().ends_with('な')
+                        && suffix
+                            .chars()
+                            .all(|c| c.is_whitespace() || "、。！？,.!?".contains(c))))
             } else {
                 !(english_request(prefix) || coordinated)
             } {
                 continue;
             }
-            let (target_text, offset) = if japanese {
+            let (target_text, offset) = if japanese || rule.direct_target {
                 (unit.as_str(), 0)
             } else {
                 (suffix, verb.end())
             };
-            if let Some(target) = target_match(rule, target_text) {
+            let local = if rule.direct_target {
+                while target_index < unit_targets.len()
+                    && unit_targets[target_index].end() <= verb.start()
+                {
+                    target_index += 1;
+                }
+                let embedded_target = unit_targets.get(target_index);
+                let candidate = if japanese {
+                    embedded_target
+                        .filter(|target| target.end() <= verb.end())
+                        .or_else(|| {
+                            target_index
+                                .checked_sub(1)
+                                .and_then(|i| unit_targets.get(i))
+                        })
+                } else {
+                    embedded_target
+                };
+                candidate
+                    .filter(|target| {
+                        if japanese {
+                            target.start() >= verb.start()
+                                || JAPANESE_OBJECT_LINK
+                                    .is_match(&unit.as_str()[target.end()..verb.start()])
+                        } else {
+                            target.start() < verb.end()
+                                || DIRECT_OBJECT_PREFIX
+                                    .is_match(&unit.as_str()[verb.end()..target.start()])
+                        }
+                    })
+                    .copied()
+            } else {
+                target_match(rule, target_text)
+            };
+            if let Some(target) = local {
                 return Some((
                     unit.start() + verb.start().min(offset + target.start()),
                     unit.start() + verb.end().max(offset + target.end()),
                 ));
             }
-            if !GRAMMAR[2].is_match(unit.as_str()) {
+            if rule.direct_target || !GRAMMAR[2].is_match(unit.as_str()) {
                 continue;
             }
             let start = unit.start() + verb.start();

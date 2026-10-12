@@ -163,6 +163,12 @@ export function normalizeForScan(input: string, options: NormalizationOptions = 
   text = visible;
 
   const branches: ScanVariant[] = [{ text, techniques: [...commonTechniques] }];
+  // Delimiters can separate complete words as well as individual letters.
+  // Keep both interpretations for inspection; never change the returned body.
+  const spaced = text.replace(LETTER_DELIMITERS, " ");
+  if (spaced !== text) {
+    branches.push({ text: spaced, techniques: [...commonTechniques, "word_delimiter_spaced"] });
+  }
   const joined = text.replace(LETTER_DELIMITERS, "");
   if (joined !== text) {
     branches.push({
@@ -203,6 +209,10 @@ export function normalizeForScan(input: string, options: NormalizationOptions = 
     branchText = postDecodedCompacted;
     addVariant({ text: branchText, techniques: [...techniques] });
 
+    const postDecodedSpaced = branchText.replace(LETTER_DELIMITERS, " ");
+    if (postDecodedSpaced !== branchText) {
+      addVariant({ text: postDecodedSpaced, techniques: [...techniques, "word_delimiter_spaced"] });
+    }
     const postDecodedJoined = branchText.replace(LETTER_DELIMITERS, "");
     if (postDecodedJoined !== branchText) {
       addVariant({

@@ -1,4 +1,8 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": []
+  "ignorePatterns": [
+    "test/fixtures/content-density/*.html",
+    "test/fixtures/wikipedia/*-lead.json",
+    "test/fixtures/wikipedia/*-search.json"
+  ]
 }

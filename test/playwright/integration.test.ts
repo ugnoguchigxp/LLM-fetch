@@ -81,7 +81,8 @@ describe("Playwright rendered DOM integration", () => {
         expect(document.text).toContain("# Rendered fixture");
         expect(document.text).toContain("  - URLs");
         expect(document.text).toContain("|Key|Value|\n|---|---|\n|A|B|");
-        expect(document.text).toContain("[Reference](http://fixture.example/reference)");
+        expect(document.text).toContain("Reference");
+        expect(document.text).not.toContain("[Reference](http://fixture.example/reference)");
         expect(document.text).not.toMatch(/<\/?[a-z]/i);
         expect(document.security).toMatchObject({
           trust: "untrusted",

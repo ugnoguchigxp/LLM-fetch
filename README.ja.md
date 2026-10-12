@@ -97,6 +97,31 @@ await web.close();
 
 ## 検索プロバイダー
 
+### Wikipedia
+
+Wikipedia専用検索と、表を含む冒頭セクションの取得を利用できます。WikimediaのUser-Agent方針に従い、運営者の公開連絡先URLまたはメールアドレスを指定してください。
+
+```ts
+import { createLlmFetch, wikipedia } from "llm-fetch";
+
+const wiki = wikipedia({
+  contact: "https://your-app.example/contact",
+  language: "ja",
+});
+const web = createLlmFetch({ search: wiki, fetcher: wiki.fetcher });
+try {
+  const result = await web.searchAndRead({
+    query: "サッカー",
+    limit: 1,
+    maxCharactersPerDocument: 8_000,
+  });
+} finally {
+  await web.close();
+}
+```
+
+`search: wiki`で専用検索を、`fetcher: wiki.fetcher`で冒頭のみの取得を指定します。取得したAPI応答は、Markdownに使わない項目も含めて検査します。`finalUrl`は取得した版を示します。後続のセクションは取得しません。[APIの詳細](./docs/API.md#wikipedia-search-and-opening-sections)を参照してください。
+
 ### DuckDuckGo
 
 DuckDuckGoはAPIキーなしで利用できます。

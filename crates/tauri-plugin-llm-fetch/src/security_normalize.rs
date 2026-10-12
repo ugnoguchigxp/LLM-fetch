@@ -54,6 +54,15 @@ fn normalize_bounded(
         text: text.clone(),
         techniques: common_techniques.clone(),
     }];
+    let spaced = replace_letter_delimiters(&text, Some(' '));
+    if spaced != text {
+        let mut techniques = common_techniques.clone();
+        push_technique(&mut techniques, "word_delimiter_spaced");
+        branches.push(ScanVariant {
+            text: spaced,
+            techniques,
+        });
+    }
     let joined = remove_letter_delimiters(&text);
     if joined != text {
         let mut techniques = common_techniques;
@@ -106,6 +115,19 @@ fn normalize_bounded(
             },
         );
 
+        let spaced = replace_letter_delimiters(&branch_text, Some(' '));
+        if spaced != branch_text {
+            let mut spaced_techniques = techniques.clone();
+            push_technique(&mut spaced_techniques, "word_delimiter_spaced");
+            add_variant(
+                &mut variants,
+                &mut seen,
+                ScanVariant {
+                    text: spaced,
+                    techniques: spaced_techniques,
+                },
+            );
+        }
         let joined = remove_letter_delimiters(&branch_text);
         if joined != branch_text {
             push_technique(&mut techniques, "letter_delimiter_removed");
@@ -208,6 +230,10 @@ fn remove_invisible_controls(input: &str) -> String {
 }
 
 fn remove_letter_delimiters(input: &str) -> String {
+    replace_letter_delimiters(input, None)
+}
+
+fn replace_letter_delimiters(input: &str, replacement: Option<char>) -> String {
     let characters = input.chars().collect::<Vec<_>>();
     characters
         .iter()
@@ -218,7 +244,11 @@ fn remove_letter_delimiters(input: &str) -> String {
                 && index + 1 < characters.len()
                 && characters[index - 1].is_alphabetic()
                 && characters[index + 1].is_alphabetic();
-            (!delimiter || !between_letters).then_some(*character)
+            if delimiter && between_letters {
+                replacement
+            } else {
+                Some(*character)
+            }
         })
         .collect()
 }

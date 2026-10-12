@@ -94,6 +94,7 @@ export interface GuardScanDiagnostics {
   scannedSegmentCount: number;
   availableCharacters: number;
   scannedCharacters: number;
+  /** Configured scan count limit, or 0 when only character/collection limits apply. */
   maxSegments: number;
   maxCharacters: number;
   omittedSegments: number;

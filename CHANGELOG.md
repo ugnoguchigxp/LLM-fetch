@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Versions follow Semantic Versioning; release tags use the matching `v<version>` form.
 
+## 0.1.3 - 2026-10-12
+
+- Added opt-in `wikipedia({ contact, language })` search and its section-0 `fetcher`, using Wikimedia API contracts and a contact-bearing bot User-Agent. Opening sections return Markdown and revision-specific citation URLs; ordinary reads and provider routing keep their defaults.
+- Retain adapter source JSON for inspection: decode all keys/values and HTML projections, inspect unmapped fields within the shared read budget, and send exact JSON plus generated HTML to additional guards. Collection limits, detection rules and guard decision policy are unchanged.
+- Scan all collected segments within the character budget by default, so pages with many short attributes are not withheld solely for exceeding 128 fragments. Explicit `maxSegments` limits and actual collection or character-budget shortfalls still fail closed. Diagnostic `maxSegments: 0` indicates that no scan count limit was configured.
+- Increased information density in HTML/XHTML and embedded-HTML Markdown output without changing content-candidate selection or guard inspection. Expand simple merged cells into pipe tables, transpose wide row-header matrices or split tables to at most 12 columns, and keep row/column records for complex cells. Wide full-row values are retained once as labeled table context.
+- Preserve text in ambiguous link-heavy blocks so linked records (including match cards) are not mistaken for navigation. Omit `nav` and explicitly marked `role="navigation"` elements during formatting, keep standalone link labels without URLs, and retain resolved URLs in prose references. No site/class/id dictionaries or content classifiers are added. Candidate selection, guard inspection material, detection rules, limits and decision policy are unchanged.
+- Deduplicate icon alt text immediately repeated by displayed text. Public API types and return limits are unchanged.
+- Fixed unrelated words on financial and news pages triggering instruction-override or source-suppression findings. These rules now require a direct request and an associated instruction or citation target, without guessing references across sentences or paragraphs. TypeScript and Rust share regression fixtures; inspection limits and decision policy are unchanged.
+- Preserve detection of word-delimited directives such as `ignore.previous instructions` through inspection-only normalization. Returned document text is unchanged.
+
 ## 0.1.2 - 2026-10-09
 
 - Added `text/markdown` retrieval with structured Markdown output. A `<` also triggers a separate HTML inspection projection; returned text remains untrusted reference data.

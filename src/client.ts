@@ -27,7 +27,8 @@ import { createSafeHttpFetcher } from "./retrieval/http-fetcher.js";
 import { normalizeResultUrl } from "./retrieval/url-normalizer.js";
 import { createInternalBuiltinContextGuard, runAdditionalGuard } from "./security/context-guard.js";
 import { markAdditionalGuardRestriction, mergeGuardResults } from "./security/merge-decisions.js";
-import type { ContentSegment } from "./security/html-segments.js";
+import { MAX_COLLECTED_SEGMENTS, type ContentSegment } from "./security/html-segments.js";
+import { prepareJsonInspection } from "./security/json-segments.js";
 import { createToolset, type LlmFetchToolset } from "./tools/toolset.js";
 import {
   isTimeoutReason,
@@ -206,6 +207,7 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       hits.map(async (hit) => {
         const builtinResult = builtinGuard.inspectPrepared({
           visibleText: `${hit.provider}\n${hit.title}\n${hit.snippet}\n${hit.url}\n${hit.displayUrl ?? ""}`,
+          structuralLines: true,
           requestedUse: "answer_with_citation",
           stage: "search_result",
         });
@@ -285,7 +287,15 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     };
     if (input.signal) guardInput.signal = input.signal;
     try {
-      return await runConfiguredGuard(guardInput);
+      const outputResult = await runConfiguredGuard(guardInput);
+      if (!fetched.originalResponse) return outputResult;
+      const originalResult = await runConfiguredGuard({
+        ...guardInput,
+        rawBody: fetched.originalResponse.body,
+        contentType: fetched.originalResponse.contentType,
+        source: { ...source, finalUrl: fetched.originalResponse.finalUrl },
+      });
+      return mergeGuardResults([outputResult, originalResult]);
     } catch {
       if (input.signal?.aborted) throw abortReason(input.signal);
       throw new LlmFetchError("GUARD_FAILED", "Additional content guard failed.", {
@@ -364,6 +374,14 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         originalLength: input.source.provider.length,
       });
     }
+    if (fetched.originalResponse) {
+      referenceSegments.push({
+        location: "attribute",
+        text: fetched.originalResponse.finalUrl,
+        truncated: false,
+        originalLength: fetched.originalResponse.finalUrl.length,
+      });
+    }
     if (input.source?.snippet) {
       referenceSegments.push({
         location: "attribute",
@@ -388,10 +406,24 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       ...(input.maxCharacters === undefined ? {} : { maxCharacters: input.maxCharacters }),
     });
     throwIfDeadlineElapsed(deadline);
+    const originalMaterial = fetched.originalResponse
+      ? prepareJsonInspection(decodeBody(fetched.originalResponse.body, "application/json"))
+      : undefined;
+    const inspectionSegments = [
+      ...prepared.additionalSegments,
+      ...(originalMaterial?.additionalSegments ?? []),
+    ];
+    const collectionOverflow = originalMaterial
+      ? Math.max(0, inspectionSegments.length - MAX_COLLECTED_SEGMENTS)
+      : 0;
     const contentResult = builtinGuard.inspectPrepared({
       visibleText: prepared.visibleText,
-      additionalSegments: prepared.additionalSegments,
-      omittedSegments: prepared.omittedSegments,
+      structuralLines: prepared.structuralLines ?? false,
+      additionalSegments: collectionOverflow
+        ? inspectionSegments.slice(0, MAX_COLLECTED_SEGMENTS)
+        : inspectionSegments,
+      omittedSegments:
+        prepared.omittedSegments + (originalMaterial?.omittedSegments ?? 0) + collectionOverflow,
       requestedUse,
       stage: "content",
     });

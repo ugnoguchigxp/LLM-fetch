@@ -98,6 +98,31 @@ Use `guardReasonCodes` to tell a guard refusal apart from an HTTP or encoding fa
 
 ## Search providers
 
+### Wikipedia
+
+Search Wikipedia and retrieve only the opening section, including its tables. Supply your public contact URL or email for Wikimedia’s User-Agent policy.
+
+```ts
+import { createLlmFetch, wikipedia } from "llm-fetch";
+
+const wiki = wikipedia({
+  contact: "https://your-app.example/contact",
+  language: "ja",
+});
+const web = createLlmFetch({ search: wiki, fetcher: wiki.fetcher });
+try {
+  const result = await web.searchAndRead({
+    query: "サッカー",
+    limit: 1,
+    maxCharactersPerDocument: 8_000,
+  });
+} finally {
+  await web.close();
+}
+```
+
+Both options are needed: `search: wiki` selects the search provider; `fetcher: wiki.fetcher` selects section 0 retrieval. The complete received API response is guarded, including fields excluded from Markdown. `finalUrl` identifies the retrieved revision. Later sections are not fetched. See [API details](./docs/API.md#wikipedia-search-and-opening-sections).
+
 ### DuckDuckGo
 
 DuckDuckGo does not require an API key.
