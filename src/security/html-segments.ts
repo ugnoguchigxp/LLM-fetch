@@ -8,6 +8,8 @@ export interface ContentSegment {
   text: string;
   truncated: boolean;
   originalLength: number;
+  /** Producer-provided line boundaries, such as search fields or Markdown lines. */
+  structuralLines?: boolean;
 }
 
 export interface PreparedHtml {
@@ -18,7 +20,7 @@ export interface PreparedHtml {
 }
 
 const MAX_SEGMENT_TEXT = 64_000;
-const MAX_COLLECTED_SEGMENTS = 4_097;
+export const MAX_COLLECTED_SEGMENTS = 4_097;
 const HIDDEN_STYLE_PATTERNS = [
   /(?:^|;)\s*display\s*:\s*none(?:\s*!important)?\s*(?:;|$)/i,
   /(?:^|;)\s*visibility\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i,
@@ -29,7 +31,7 @@ const HIDDEN_STYLE_PATTERNS = [
   /(?:^|;)\s*transform\s*:\s*scale(?:x|y)?\s*\(\s*0(?:\.0+)?(?:\s*,\s*0(?:\.0+)?)?\s*\)(?:\s*!important)?\s*(?:;|$)/i,
 ];
 
-function boundedText(text: string): Omit<ContentSegment, "location"> {
+export function boundedText(text: string): Omit<ContentSegment, "location"> {
   const normalized = text.replace(/\s+/g, " ").trim();
   const originalLength = normalized.length;
   if (originalLength <= MAX_SEGMENT_TEXT) {

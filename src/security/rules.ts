@@ -15,16 +15,19 @@ interface DetectionRule {
   reason: string;
   all: RegExp[];
   actionIndex?: 0 | 1;
+  directTarget?: boolean;
 }
 
 const RULES: readonly DetectionRule[] = [
   {
     category: "instruction_override",
+    actionIndex: 0,
+    directTarget: true,
     severity: "high",
     reason: "Content attempts to override higher-priority instructions.",
     all: [
       /\b(?:ignore|disregard|forget|override|bypass|discard)\b|(?:無視|忘れ|上書き|回避|従うな)/iu,
-      /\b(?:previous|prior|above|system|developer|instructions?|prompt|rules?)\b|(?:以前|上記|システム|開発者|指示|命令|プロンプト|規則)/iu,
+      /\b(?:(?:(?:previous|prior|above|earlier|system|developer|all|any|your)\s+){1,3}(?:instructions?|prompts?|rules?|directions?|guidelines?|messages?)|instructions?|prompts?)\b|(?:(?:以前|上記|これまで|前|全て|すべて|システム|開発者)の?(?:指示|命令|ルール|規則|プロンプト)|指示|命令|プロンプト|システムメッセージ|開発者メッセージ)/iu,
     ],
   },
   {
@@ -87,11 +90,13 @@ const RULES: readonly DetectionRule[] = [
   },
   {
     category: "source_suppression",
+    actionIndex: 0,
+    directTarget: true,
     severity: "medium",
     reason: "Content requests suppression of sources or citations.",
     all: [
-      /\b(?:do not|don't|never|omit|hide|remove)\b|(?:するな|しない|隠|消|省略)/iu,
-      /\b(?:cite|citation|source|reference|provenance)\b|(?:引用|出典|参照元|情報源)/iu,
+      /\b(?:(?:do not|don't|never|not)\s+(?:cite|quote|reference|mention|include|show|list|provide)|omit|hide|remove)\b|(?:(?:引用|記載|表示|提示|参照)?(?:するな|しない)|隠|消|省略)/iu,
+      /\b(?:cite|quote|citations?|sources?|references?|provenance)\b|(?:引用|出典|参照元|情報源)/iu,
     ],
   },
   {
@@ -192,12 +197,15 @@ export function scanSegments(
     omittedSegments: number;
   };
 } {
-  const maxSegments = options.maxSegments ?? 128;
+  // A default count cutoff discards short attributes even when every character
+  // fits. Keep source boundaries and allocate the character budget across all
+  // collected segments; a count cutoff is only a caller-supplied restriction.
+  const maxSegments = options.maxSegments ?? 0;
   const maxCharacters = options.maxCharacters ?? 250_000;
   const findings: SecurityFinding[] = [];
   const keys = new Set<string>();
   const truncationReasons = new Set<string>();
-  const segmentCountLimit = segments.length > maxSegments;
+  const segmentCountLimit = options.maxSegments !== undefined && segments.length > maxSegments;
   if (segments.some((segment) => segment.truncated)) {
     truncationReasons.add(
       "One or more content segments exceeded the per-segment inspection limit.",
@@ -207,9 +215,10 @@ export function scanSegments(
     truncationReasons.add("The content contained more segments than the inspection limit.");
   }
 
-  const selectedSegments = selectSegmentIndexes(segments.length, maxSegments).map(
-    (index) => segments[index]!,
-  );
+  const selectedSegments =
+    options.maxSegments === undefined
+      ? segments
+      : selectSegmentIndexes(segments.length, maxSegments).map((index) => segments[index]!);
   const budgets = allocateCharacterBudgets(
     selectedSegments.map((segment) => segment.text.length),
     maxCharacters,
@@ -236,6 +245,9 @@ export function scanSegments(
     }).entries()) {
       let units: ReturnType<typeof textUnits> | undefined;
       for (const rule of RULES) {
+        // Spacing word delimiters restores direct request bindings. Keep that
+        // extra interpretation out of the unchanged document-wide rules.
+        if (variant.techniques.includes("word_delimiter_spaced") && !rule.directTarget) continue;
         if (!rule.all.every((pattern) => pattern.test(variant.text))) continue;
         let match: RuleMatch | undefined;
         if (rule.actionIndex !== undefined) {
@@ -245,6 +257,8 @@ export function scanSegments(
             rule.all[rule.actionIndex]!,
             rule.all[1 - rule.actionIndex]!,
             rule.category === "secret_exfiltration",
+            rule.directTarget,
+            segment.structuralLines,
           );
         } else {
           const matches = rule.all.map((pattern) => pattern.exec(variant.text)!);

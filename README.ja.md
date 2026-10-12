@@ -6,9 +6,7 @@
 
 Python、Docker、SearXNG、常駐サービスは不要です。通常のページはHTTPで取得し、JavaScriptで本文を生成するページだけ、任意でPlaywrightへ切り替えられます。
 
-Tauriアプリではnpm版を組み込まず、同じリポジトリのCargo-only
-[`tauri-plugin-llm-fetch`](https://github.com/ugnoguchigxp/LLM-fetch/tree/main/crates/tauri-plugin-llm-fetch)
-を使用します。OS標準の隠しWebViewだけで取得し、Node.js、Playwright、別ブラウザ、sidecarは不要です。npm版はNode.js向け実装とRust security guardの参照元として独立して残しています。
+このリポジトリの保守対象はTypeScriptのnpmパッケージです。以前のTauri/Rustプラグインとサンプルは削除しました。
 
 ## 動作環境
 
@@ -96,6 +94,31 @@ await web.close();
 | `close()` | キャッシュ、ブラウザ、内部プロキシを終了する |
 
 ## 検索プロバイダー
+
+### Wikipedia
+
+Wikipedia専用検索と、表を含む冒頭セクションの取得を利用できます。WikimediaのUser-Agent方針に従い、運営者の公開連絡先URLまたはメールアドレスを指定してください。
+
+```ts
+import { createLlmFetch, wikipedia } from "llm-fetch";
+
+const wiki = wikipedia({
+  contact: "https://your-app.example/contact",
+  language: "ja",
+});
+const web = createLlmFetch({ search: wiki, fetcher: wiki.fetcher });
+try {
+  const result = await web.searchAndRead({
+    query: "サッカー",
+    limit: 1,
+    maxCharactersPerDocument: 8_000,
+  });
+} finally {
+  await web.close();
+}
+```
+
+`search: wiki`で専用検索を、`fetcher: wiki.fetcher`で冒頭のみの取得を指定します。取得したAPI応答は、Markdownに使わない項目も含めて検査します。`finalUrl`は取得した版を示します。後続のセクションは取得しません。[APIの詳細](./docs/API.md#wikipedia-search-and-opening-sections)を参照してください。
 
 ### DuckDuckGo
 

@@ -4,7 +4,6 @@ export type FetchMethod = "http" | "playwright";
 
 export interface ContentRetrievalResult extends SafeFetchResult {
   fetchMethod: FetchMethod;
-  limitations?: readonly string[];
 }
 
 export interface ContentRetrieverInput {

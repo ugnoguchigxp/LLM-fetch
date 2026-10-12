@@ -40,6 +40,13 @@ export interface SafeFetchResult {
   contentType: string;
   body: Uint8Array;
   headers: Readonly<Record<string, string>>;
+  limitations?: readonly string[];
+  /** Exact source response retained by an adapter, inspected alongside its output. */
+  originalResponse?: {
+    body: Uint8Array;
+    contentType: "application/json";
+    finalUrl: string;
+  };
 }
 
 interface RequestResult {

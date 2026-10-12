@@ -1,7 +1,5 @@
 node_modules/
 dist/
-!examples/tauri-background-fetch/dist/
-!examples/tauri-background-fetch/dist/index.html
 coverage/
 .release-evidence/
 *.tgz

@@ -136,7 +136,7 @@ try {
       null,
     ),
     await measure(
-      "Segment-count limit guard",
+      "Many-segment full inspection guard",
       async () => {
         await guard.inspectRaw({
           rawBody: encoder.encode(segmentLimitHtml),

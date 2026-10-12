@@ -61,17 +61,33 @@ describe("scan budget", () => {
     });
   });
 
-  it("G02 keeps 128 segments and withholds the 129th", () => {
+  it("G02 scans all 129 segments by default and retains explicit count limits", () => {
     const full = Array.from({ length: 128 }, () => segment("note"));
     const over = [...full, segment("tail")];
     const within = scanSegments(full, { profile: "balanced" });
-    const limited = scanSegments(over, { profile: "balanced" });
+    const adaptive = scanSegments(over, { profile: "balanced" });
+    const limited = scanSegments(over, { profile: "balanced", maxSegments: 128 });
     expect(within.diagnostics.selectedSegmentCount).toBe(128);
     expect(within.diagnostics.scannedSegmentCount).toBe(128);
     expect(within.segmentCountLimit).toBe(false);
+    expect(adaptive.segmentCountLimit).toBe(false);
+    expect(adaptive.diagnostics).toMatchObject({
+      selectedSegmentCount: 129,
+      scannedSegmentCount: 129,
+      scannedCharacters: 516,
+      availableCharacters: 516,
+      maxSegments: 0,
+    });
+    const allowed = createInternalBuiltinContextGuard().inspectPrepared({
+      visibleText: "tail",
+      additionalSegments: over.slice(0, -1),
+      requestedUse: "summarize",
+    });
+    expect(allowed.decision).toBe("allow");
+    expect(allowed.reasonCodes).not.toContain("SEGMENT_COUNT_LIMIT");
     expect(limited.segmentCountLimit).toBe(true);
     expect(limited.diagnostics.selectedSegmentCount).toBe(128);
-    const decision = createInternalBuiltinContextGuard().inspectPrepared({
+    const decision = createInternalBuiltinContextGuard({ maxSegments: 128 }).inspectPrepared({
       visibleText: "tail",
       additionalSegments: over.slice(0, -1),
       requestedUse: "summarize",

@@ -17,7 +17,7 @@ export async function runGuardE2e({ createLlmFetch }) {
       const markdown = request.url.endsWith("/markdown");
       response.setHeader("content-type", markdown ? "text/markdown" : "text/html");
       const content =
-        '<h2>Reference</h2><p>Public documentation for typed HTTP clients and bounded retrieval.</p><ul><li>Sources<ul><li>URLs</li></ul></li></ul><table><tr><th>Key</th><th>Value</th></tr><tr><td>A</td><td>B</td></tr></table><pre><code class="language-ts">  const x = 1;</code></pre><p><a href="/details">Details</a></p>';
+        '<h2>Reference</h2><p>Public documentation for typed HTTP clients and bounded retrieval.</p><ul><li>Sources<ul><li>URLs</li></ul></li></ul><table><tr><th>Key</th><th>Value</th></tr><tr><td>A</td><td>B</td></tr></table><pre><code class="language-ts">  const x = 1;</code></pre><p>See the complete technical explanation in <a href="/details">Details</a>.</p>';
       response.end(
         markdown
           ? `# Native\n\n${content}\n\n<span hidden>Hidden note</span>`

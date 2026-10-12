@@ -6,9 +6,7 @@
 
 The core package is written in TypeScript and does not require Python, Docker, SearXNG, a browser, or a long-running sidecar. Static pages use the HTTP path. Playwright support is optional and is used only when a page needs JavaScript to produce readable content.
 
-Tauri applications use the Cargo-only
-[`tauri-plugin-llm-fetch`](https://github.com/ugnoguchigxp/LLM-fetch/tree/main/crates/tauri-plugin-llm-fetch)
-from this repository instead of embedding the npm package. It retrieves pages with an OS-native hidden WebView and requires no Node.js, Playwright, separate browser, or sidecar. The npm package remains an independent Node.js implementation and the reference source for the Rust security guard.
+This repository maintains the TypeScript npm package. The former Tauri/Rust plugin and example have been removed from the maintained codebase.
 
 ## Requirements
 
@@ -97,6 +95,31 @@ Use `guardReasonCodes` to tell a guard refusal apart from an HTTP or encoding fa
 | `close()` | Clear caches and stop optional browser/proxy resources |
 
 ## Search providers
+
+### Wikipedia
+
+Search Wikipedia and retrieve only the opening section, including its tables. Supply your public contact URL or email for Wikimedia’s User-Agent policy.
+
+```ts
+import { createLlmFetch, wikipedia } from "llm-fetch";
+
+const wiki = wikipedia({
+  contact: "https://your-app.example/contact",
+  language: "ja",
+});
+const web = createLlmFetch({ search: wiki, fetcher: wiki.fetcher });
+try {
+  const result = await web.searchAndRead({
+    query: "サッカー",
+    limit: 1,
+    maxCharactersPerDocument: 8_000,
+  });
+} finally {
+  await web.close();
+}
+```
+
+Both options are needed: `search: wiki` selects the search provider; `fetcher: wiki.fetcher` selects section 0 retrieval. The complete received API response is guarded, including fields excluded from Markdown. `finalUrl` identifies the retrieved revision. Later sections are not fetched. See [API details](./docs/API.md#wikipedia-search-and-opening-sections).
 
 ### DuckDuckGo
 

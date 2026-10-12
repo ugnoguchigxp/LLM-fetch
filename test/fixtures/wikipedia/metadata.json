@@ -1,0 +1,12 @@
+{
+  "soccer": {
+    "url": "https://ja.wikipedia.org/wiki/%E3%82%B5%E3%83%83%E3%82%AB%E3%83%BC",
+    "hash": "0dcffdd5b8c3158fe8ca3288e8cc095a45862020b3c9e868bad54d23cb9d32c6",
+    "revid": 111092084
+  },
+  "worldcup": {
+    "url": "https://ja.wikipedia.org/wiki/2026_FIFA%E3%83%AF%E3%83%BC%E3%83%AB%E3%83%89%E3%82%AB%E3%83%83%E3%83%97",
+    "hash": "9386b38550415d55a671e6380e28eb7172130f52b084e5d92e9bcbb78b29b55d",
+    "revid": 111224987
+  }
+}

@@ -399,6 +399,19 @@ export function validateFetchResult(value: unknown, requestedUrl: string): Conte
       { url: requestedUrl },
     );
   }
+  if (
+    result.originalResponse !== undefined &&
+    (!result.originalResponse ||
+      typeof result.originalResponse !== "object" ||
+      !(result.originalResponse.body instanceof Uint8Array) ||
+      result.originalResponse.body.byteLength > 10_000_000 ||
+      result.originalResponse.contentType !== "application/json" ||
+      typeof result.originalResponse.finalUrl !== "string" ||
+      result.originalResponse.finalUrl.length > 2_048 ||
+      !normalizeResultUrl(result.originalResponse.finalUrl))
+  ) {
+    throw new LlmFetchError("UPSTREAM_HTTP", "Fetcher returned invalid original response.");
+  }
   return {
     requestedUrl: normalizedRequestedUrl,
     finalUrl: normalizedFinalUrl,
@@ -407,6 +420,9 @@ export function validateFetchResult(value: unknown, requestedUrl: string): Conte
     body: result.body,
     headers,
     fetchMethod: result.fetchMethod,
+    ...(result.originalResponse === undefined
+      ? {}
+      : { originalResponse: { ...result.originalResponse } }),
     ...(result.limitations === undefined ? {} : { limitations: [...result.limitations] }),
   };
 }

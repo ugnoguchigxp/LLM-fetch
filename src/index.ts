@@ -11,6 +11,8 @@ export { brave } from "./providers/brave.js";
 export type { BraveOptions } from "./providers/brave.js";
 export { duckDuckGo } from "./providers/duckduckgo.js";
 export type { DuckDuckGoOptions } from "./providers/duckduckgo.js";
+export { wikipedia } from "./providers/wikipedia.js";
+export type { WikipediaOptions, WikipediaProvider } from "./providers/wikipedia.js";
 export { fallbackSearch } from "./providers/fallback.js";
 export { createSafeHttpFetcher } from "./retrieval/http-fetcher.js";
 export type {

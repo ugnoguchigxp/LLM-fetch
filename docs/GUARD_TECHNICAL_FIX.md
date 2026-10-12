@@ -1,5 +1,7 @@
 # 技術文書のガード誤検知修正・検証報告
 
+2026年10月12日以降の保守対象はTypeScript版のみ。Tauri/Rust版は削除したため、以下のRust検証実績は当時の記録であり、現行の再実行手順には含まれない。
+
 2026-09-13。基準コミット: `dbce109ab45b8baaa3524d1b09c2eab4030b1d74`。
 本報告の前後比較はこのコミットに対する改修時の測定。リリース用コミット確定後の最新証跡は `.release-evidence/` のリリース報告を参照。npm公開は別工程。
 
@@ -90,9 +92,6 @@ npm run verify:guard-corpus
 npm run verify:guard-e2e
 LLM_FETCH_PLAYWRIGHT_INTEGRATION=1 npx vitest run test/playwright/integration.test.ts
 npm run format:check
-cargo fmt --all -- --check
-cargo test -p tauri-plugin-llm-fetch
-cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 前後比較では、改修前に保存した基準コミットのビルドを使用した。
