@@ -2,6 +2,8 @@
 
 Use Node.js 22.18 or later and the npm version declared in `packageManager`.
 
+Maintenance covers the TypeScript npm package and its optional Playwright extension. The former Tauri/Rust workspace, example and verification jobs have been removed. TypeScript source, test and script files must remain below 800 lines; the Node CI job enforces this limit.
+
 ```sh
 npm ci
 npm run verify

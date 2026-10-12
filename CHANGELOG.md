@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow Semantic Versioning; release tags use the matching `v<version>` form.
 
+## Unreleased
+
+- Removed the unmaintained Tauri/Rust plugin, example, Cargo workspace, Rust fixture export and dedicated verification jobs. Maintenance now covers the TypeScript npm package and optional Playwright extension. TypeScript guard inspection, detection, tests and runtime behavior are unchanged; the source-file size check remains in Node CI.
+
 ## 0.1.3 - 2026-10-12
 
 - Added opt-in `wikipedia({ contact, language })` search and its section-0 `fetcher`, using Wikimedia API contracts and a contact-bearing bot User-Agent. Opening sections return Markdown and revision-specific citation URLs; ordinary reads and provider routing keep their defaults.
