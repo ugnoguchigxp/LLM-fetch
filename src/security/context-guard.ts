@@ -8,7 +8,7 @@ import type {
   SourceMetadata,
 } from "../contracts.js";
 import { LlmFetchError } from "../errors.js";
-import { abortReason, isAbortSignal } from "../internal/abort-signal.js";
+import { abortReason, isAbortSignal, waitWithSignal } from "../internal/abort-signal.js";
 import { decodeBody, loadHtml } from "../retrieval/extract-content.js";
 import { orderGuardReasonCodes } from "./guard-codes.js";
 import { prepareHtmlForExtraction, type ContentSegment } from "./html-segments.js";
@@ -22,6 +22,24 @@ export interface BuiltinContextGuardOptions {
   /** Optional hard count limit. Omit to inspect all collected segments within maxCharacters. */
   maxSegments?: number;
   maxCharacters?: number;
+  /** Trusted semantic assessor; absent means the built-in decision is final. No tools or document instructions may be executed. */
+  review?: (input: GuardReviewInput) => Promise<GuardReviewDecision>;
+}
+
+export interface GuardReviewInput {
+  source: SourceMetadata;
+  requestedUse: RequestedContextUse;
+  findings: readonly SecurityFinding[];
+  /** Complete scanned segments, never truncated excerpts. External text remains untrusted data. */
+  segments: readonly { location: ContentSegment["location"]; text: string }[];
+  signal?: AbortSignal;
+}
+export interface GuardReviewDecision {
+  decision: "source_content" | "injection" | "uncertain";
+}
+const semanticReview = Symbol("complete-semantic-review");
+export function wasSemanticallyReviewed(result: GuardResult): boolean {
+  return (result as GuardResult & { [semanticReview]?: boolean })[semanticReview] === true;
 }
 
 export interface PreparedGuardInput {
@@ -33,6 +51,7 @@ export interface PreparedGuardInput {
   truncationReasons?: readonly string[];
   stage?: GuardScanDiagnostics["stage"];
   omittedSegments?: number;
+  reviewForExtraction?: boolean;
 }
 
 export interface BuiltinContextGuard {
@@ -48,6 +67,11 @@ export interface BuiltinContextGuard {
 
 export interface InternalBuiltinContextGuard extends BuiltinContextGuard {
   inspectPrepared(input: PreparedGuardInput): GuardResult;
+  inspectPreparedReviewed(
+    input: PreparedGuardInput,
+    source: SourceMetadata,
+    signal?: AbortSignal,
+  ): Promise<GuardResult>;
 }
 
 const GUARD_DECISIONS = new Set(["allow", "allow_with_warning", "require_approval", "deny"]);
@@ -158,6 +182,8 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
   readonly #profile: "balanced" | "strict";
   readonly #maxSegments: number | undefined;
   readonly #maxCharacters: number;
+  readonly #collectionCharacters: number | undefined;
+  readonly #review: BuiltinContextGuardOptions["review"];
 
   constructor(options: BuiltinContextGuardOptions = {}) {
     if (!options || typeof options !== "object" || Array.isArray(options)) {
@@ -187,6 +213,99 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
     this.#profile = profile;
     this.#maxSegments = maxSegments;
     this.#maxCharacters = maxCharacters;
+    this.#collectionCharacters = options.maxCharacters;
+    if (options.review !== undefined && typeof options.review !== "function")
+      throw new LlmFetchError("INVALID_INPUT", "Context guard review must be a function.");
+    this.#review = options.review;
+  }
+
+  async inspectPreparedReviewed(
+    input: PreparedGuardInput,
+    source: SourceMetadata,
+    signal?: AbortSignal,
+  ): Promise<GuardResult> {
+    const result = this.inspectPrepared(input);
+    if (
+      !this.#review ||
+      result.reasonCodes?.some((code) => code !== "PATTERN_DETECTED") ||
+      (!input.reviewForExtraction && !result.reasonCodes?.includes("PATTERN_DETECTED"))
+    )
+      return result;
+    // The assessor must see all scanned material, not only the first pattern hit.
+    // A larger document stays withheld rather than being classified from a preview.
+    const segments = [
+      { location: "visible" as const, text: input.visibleText },
+      ...(input.additionalSegments ?? []).map((segment) => ({
+        location: segment.location,
+        text: segment.text,
+      })),
+    ].filter((segment) => segment.text.length > 0);
+    if (
+      segments.length > 4096 ||
+      segments.reduce((n, segment) => n + segment.text.length, 0) > 160_000
+    )
+      return result;
+    signal?.throwIfAborted();
+    try {
+      const reviewSignal = AbortSignal.any([
+        ...(signal ? [signal] : []),
+        AbortSignal.timeout(30_000),
+      ]);
+      const reviewed = await waitWithSignal(
+        Promise.resolve().then(() =>
+          this.#review!({
+            source: structuredClone(source),
+            requestedUse: input.requestedUse,
+            findings: structuredClone(result.findings),
+            segments: structuredClone(segments),
+            signal: reviewSignal,
+          }),
+        ),
+        reviewSignal,
+      );
+      signal?.throwIfAborted();
+      if (
+        !reviewed ||
+        typeof reviewed !== "object" ||
+        Object.keys(reviewed).length !== 1 ||
+        reviewed.decision !== "source_content"
+      )
+        return ["allow", "allow_with_warning"].includes(result.decision)
+          ? {
+              ...result,
+              decision: "require_approval",
+              reasonCodes: ["ADDITIONAL_GUARD_RESTRICTION"],
+              reasons: ["Semantic assessment did not authorize reference material extraction."],
+            }
+          : result;
+      return {
+        ...result,
+        [semanticReview]: true,
+        decision: "allow",
+        findings: result.findings.map((finding) => ({
+          ...finding,
+          category: "benign_mention",
+          reason:
+            "Configured semantic assessor classified the apparent " +
+            finding.category +
+            " pattern as source content.",
+        })),
+        reasonCodes: [],
+        reasons: [
+          "A configured semantic assessor classified the complete inspected material as source content; it remains untrusted.",
+        ],
+      } as GuardResult & { [semanticReview]: true };
+    } catch {
+      if (signal?.aborted) throw abortReason(signal);
+      return ["allow", "allow_with_warning"].includes(result.decision)
+        ? {
+            ...result,
+            decision: "require_approval",
+            reasonCodes: ["ADDITIONAL_GUARD_RESTRICTION"],
+            reasons: ["Semantic assessment was unavailable."],
+          }
+        : result;
+    }
   }
 
   inspectPrepared(input: PreparedGuardInput): GuardResult {
@@ -279,44 +398,64 @@ class BuiltinContextGuardImpl implements InternalBuiltinContextGuard {
       input.signal?.throwIfAborted();
       const contentType = input.contentType.split(";", 1)[0]?.trim().toLowerCase();
       if (contentType === "application/json") {
-        return this.inspectPrepared({
-          ...prepareJsonInspection(text),
-          structuralLines: true,
-          requestedUse: input.requestedUse,
-          stage: "content",
-        });
+        return this.inspectPreparedReviewed(
+          {
+            ...prepareJsonInspection(text, this.#collectionCharacters),
+            structuralLines: true,
+            requestedUse: input.requestedUse,
+            stage: "content",
+          },
+          input.source,
+          input.signal,
+        );
       }
       if (contentType === "text/html" || contentType === "application/xhtml+xml") {
         const $ = loadHtml(text);
         input.signal?.throwIfAborted();
-        const prepared = prepareHtmlForExtraction($, text);
-        input.signal?.throwIfAborted();
-        return this.inspectPrepared({
-          visibleText: $("body").text(),
-          additionalSegments: prepared.segments,
-          requestedUse: input.requestedUse,
-          omittedSegments: prepared.omittedSegments,
-          stage: "content",
+        const prepared = prepareHtmlForExtraction($, text, {
+          ...(this.#collectionCharacters === undefined
+            ? {}
+            : { maxCharacters: this.#collectionCharacters }),
         });
+        input.signal?.throwIfAborted();
+        return this.inspectPreparedReviewed(
+          {
+            visibleText: $("body").text(),
+            additionalSegments: prepared.segments,
+            requestedUse: input.requestedUse,
+            omittedSegments: prepared.omittedSegments,
+            stage: "content",
+          },
+          input.source,
+          input.signal,
+        );
       }
       if (contentType === "text/markdown") {
         input.signal?.throwIfAborted();
-        const prepared = prepareMarkdownInspection(text);
+        const prepared = prepareMarkdownInspection(text, this.#collectionCharacters);
         input.signal?.throwIfAborted();
-        return this.inspectPrepared({
-          visibleText: prepared.visibleText,
-          structuralLines: true,
-          additionalSegments: prepared.additionalSegments,
-          requestedUse: input.requestedUse,
-          omittedSegments: prepared.omittedSegments,
-          stage: "content",
-        });
+        return this.inspectPreparedReviewed(
+          {
+            visibleText: prepared.visibleText,
+            structuralLines: true,
+            additionalSegments: prepared.additionalSegments,
+            requestedUse: input.requestedUse,
+            omittedSegments: prepared.omittedSegments,
+            stage: "content",
+          },
+          input.source,
+          input.signal,
+        );
       }
-      return this.inspectPrepared({
-        visibleText: text,
-        requestedUse: input.requestedUse,
-        stage: "content",
-      });
+      return this.inspectPreparedReviewed(
+        {
+          visibleText: text,
+          requestedUse: input.requestedUse,
+          stage: "content",
+        },
+        input.source,
+        input.signal,
+      );
     } catch (error) {
       if (error instanceof LlmFetchError) throw error;
       if (input.signal?.aborted) throw abortReason(input.signal);

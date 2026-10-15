@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Versions follow Semanti
 
 ## Unreleased
 
+- Inspect HTML title metadata in the shared collector before either visible extraction or reviewed hidden-material recovery, so an attack title cannot bypass the guard when visible selection fails.
+- Added opt-in, host-supplied semantic assessment of complete inspected reference material. The original request/reference detection is retained, including indirect cross-sentence requests. Without an assessor the built-in decision is final; incomplete inspection, failed/invalid assessment and additional-guard restrictions cannot be cleared. Assessment input and time are bounded and document content remains untrusted.
+- When visible HTML extraction is insufficient, a successful complete semantic assessment can authorize extraction of the same response's reviewed reference material, including hidden server-rendered content. Scripts remain excluded, return limits and taint are preserved, and security limitations record the extraction mode. No site or framework exception is added.
+- Honor an explicitly configured guard character budget during HTML, embedded-HTML Markdown and JSON segment collection, instead of discarding the middle of every segment longer than 64,000 characters. Default collection ceilings, aggregate scan limits, return limits, taint and fail-closed policy are preserved.
 - Removed the unmaintained Tauri/Rust plugin, example, Cargo workspace, Rust fixture export and dedicated verification jobs. Maintenance now covers the TypeScript npm package and optional Playwright extension. TypeScript guard inspection, detection, tests and runtime behavior are unchanged; the source-file size check remains in Node CI.
 
 ## 0.1.3 - 2026-10-12

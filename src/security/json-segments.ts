@@ -5,7 +5,7 @@ import { prepareMarkdownInspection } from "./markdown-segments.js";
 // JSON adapters must inspect decoded fields, including fields not used in output.
 // Use the existing HTML projection and collection ceiling; never silently skip
 // escaped directives, markup attributes, or an oversized/deep response.
-export function prepareJsonInspection(decoded: string) {
+export function prepareJsonInspection(decoded: string, maxCharacters?: number) {
   let value: unknown;
   try {
     value = JSON.parse(decoded);
@@ -31,10 +31,14 @@ export function prepareJsonInspection(decoded: string) {
       for (const [key, child] of entries) stack.push(key, child);
       continue;
     }
-    const material = prepareMarkdownInspection(String(item));
+    const material = prepareMarkdownInspection(String(item), maxCharacters);
     const text = material.visibleText;
     if (text) {
-      segments.push({ location: "visible", ...boundedText(text), structuralLines: true });
+      segments.push({
+        location: "visible",
+        ...boundedText(text, maxCharacters),
+        structuralLines: true,
+      });
     }
     omittedSegments += material.omittedSegments;
     for (const segment of material.additionalSegments) {

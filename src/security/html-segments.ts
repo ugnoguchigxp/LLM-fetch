@@ -31,14 +31,20 @@ const HIDDEN_STYLE_PATTERNS = [
   /(?:^|;)\s*transform\s*:\s*scale(?:x|y)?\s*\(\s*0(?:\.0+)?(?:\s*,\s*0(?:\.0+)?)?\s*\)(?:\s*!important)?\s*(?:;|$)/i,
 ];
 
-export function boundedText(text: string): Omit<ContentSegment, "location"> {
+export function boundedText(
+  text: string,
+  maxCharacters?: number,
+): Omit<ContentSegment, "location"> {
   const normalized = text.replace(/\s+/g, " ").trim();
   const originalLength = normalized.length;
-  if (originalLength <= MAX_SEGMENT_TEXT) {
+  // Preserve the default ceiling, but do not discard material the caller has
+  // explicitly budgeted to inspect. The scanner still enforces the total budget.
+  const limit = Math.max(MAX_SEGMENT_TEXT, maxCharacters ?? MAX_SEGMENT_TEXT);
+  if (originalLength <= limit) {
     return { text: normalized, truncated: false, originalLength };
   }
-  const headLength = Math.ceil(MAX_SEGMENT_TEXT / 2);
-  const tailLength = MAX_SEGMENT_TEXT - headLength;
+  const headLength = Math.ceil(limit / 2);
+  const tailLength = limit - headLength;
   return {
     text: `${normalized.slice(0, headLength)}${normalized.slice(-tailLength)}`,
     truncated: true,
@@ -79,7 +85,7 @@ function increment(summary: Record<string, number>, key: string): void {
 export function prepareHtmlForExtraction(
   $: CheerioAPI,
   rawHtml: string,
-  options: { inspectAllAttributes?: boolean } = {},
+  options: { inspectAllAttributes?: boolean; maxCharacters?: number } = {},
 ): PreparedHtml {
   const segments: ContentSegment[] = [];
   const excludedSummary: Record<string, number> = {};
@@ -89,7 +95,7 @@ export function prepareHtmlForExtraction(
     location: SecurityFindingLocation,
     text: string,
   ): Omit<ContentSegment, "location"> => {
-    const bounded = boundedText(text);
+    const bounded = boundedText(text, options.maxCharacters);
     if (!appendSegment(segments, location, bounded)) omittedSegments += 1;
     return bounded;
   };
@@ -102,6 +108,13 @@ export function prepareHtmlForExtraction(
   $("meta[content]").each((_index, element) => {
     collect("meta", $(element).attr("content") ?? "");
     increment(excludedSummary, "meta");
+  });
+
+  // Titles can enter returned metadata even when visible-body selection fails.
+  // Keep them in the common inspection material before either extraction path.
+  $("title").each((_index, element) => {
+    collect("meta", $(element).text());
+    increment(excludedSummary, "title");
   });
 
   $("template").each((_index, element) => {
@@ -119,7 +132,7 @@ export function prepareHtmlForExtraction(
       ? Object.keys(domNodeAttributes(element))
       : ["aria-label", "title", "alt", "href"];
     for (const attribute of attributes) {
-      const bounded = boundedText($(element).attr(attribute) ?? "");
+      const bounded = boundedText($(element).attr(attribute) ?? "", options.maxCharacters);
       if (!bounded.text) continue;
       if (!appendSegment(segments, "attribute", bounded)) omittedSegments += 1;
       increment(excludedSummary, `attribute:${attribute}`);

@@ -14,6 +14,7 @@ The public TypeScript declarations are authoritative. This page collects default
 | `contextGuard.profile` | `balanced` | `balanced` or `strict` |
 | `contextGuard.maxSegments` | omitted | optional hard count limit, integer `1..4_096`; by default all collected segments share the character budget |
 | `contextGuard.maxCharacters` | `250_000` | integer `1..2_000_000` |
+| `contextGuard.review` | absent | trusted asynchronous semantic assessor of complete inspected material; see below |
 | `cache.enabled` | `true` | boolean |
 | `cache.maxEntries` | `100` | integer `0..10_000` |
 | `cache.searchTtlMs` | `30_000` | integer `0..86_400_000` |
@@ -136,7 +137,7 @@ SDK packages are development-only compatibility dependencies and are not install
 
 Built-in guard results always include `reasonCodes`. `diagnostics` contains one bounded record per inspection. Merged results keep at most eight records, in inspection order. Those eight records are the first summaries, not a document-wide total. Counts are non-negative safe integers of UTF-16 code units. They do not include URLs, hashes, or matched text.
 
-The default guard scans every collected segment when their total fits `maxCharacters`, preserving individual attribute, comment, hidden-text and visible-text boundaries. It does not discard the middle of a page because it contains many short attributes. The existing character allocation applies across all segments when the total exceeds the budget, and any uninspected text still requires approval or denies tool chaining. HTML collection retains its separate 4,097-segment and 64,000-character per-segment limits; omitted or truncated collection material still fails closed. An explicitly configured `maxSegments` retains its hard count limit and head/tail selection. Diagnostic `maxSegments: 0` means no separate scan count limit; `selectedSegmentCount` may therefore exceed 128. Configuration value `0` remains invalid.
+The default guard scans every collected segment when their total fits `maxCharacters`, preserving individual attribute, comment, hidden-text and visible-text boundaries. It does not discard the middle of a page because it contains many short attributes. The character allocation applies across all segments when the total exceeds the budget, and any uninspected text still requires approval or denies tool chaining. Collection retains its separate 4,097-segment ceiling. Its default per-segment ceiling is 64,000 characters; an explicitly configured `contextGuard.maxCharacters` raises that ceiling to `max(64_000, maxCharacters)` in HTML, embedded HTML in Markdown, and JSON inspection. This allows the existing scan budget to cover a long segment in full; it does not raise the aggregate budget or the returned-text limit. Omitted or truncated collection material still fails closed. An explicitly configured `maxSegments` retains its hard count limit and head/tail selection. Diagnostic `maxSegments: 0` means no separate scan count limit; `selectedSegmentCount` may therefore exceed 128. Configuration value `0` remains invalid.
 
 | `GuardReasonCode` | Meaning |
 | --- | --- |
@@ -146,7 +147,17 @@ The default guard scans every collected segment when their total fits `maxCharac
 | `SEGMENT_TEXT_LIMIT` | A collector marked a segment `truncated` |
 | `SEGMENT_COLLECTION_LIMIT` | The collector omitted at least one segment |
 | `INSPECTION_INCOMPLETE` | Inspection was marked incomplete without one of the specific limit codes above |
-| `ADDITIONAL_GUARD_RESTRICTION` | An additional guard returned `require_approval` or `deny` |
+| `ADDITIONAL_GUARD_RESTRICTION` | An additional guard restricted use, or required semantic assessment did not authorize extraction |
+
+### Optional semantic assessment
+
+`contextGuard.review` receives `GuardReviewInput`: source metadata, requested use, heuristic findings, all scanned visible/additional segments, and an abort signal. It returns only `{ decision: "source_content" | "injection" | "uncertain" }`. This is a trusted host integration for an isolated semantic classifier, not a document-controlled tool or an approval string supplied by a website. The library does not supply or select an LLM, credentials, instructions, conversation history, or tools for the classifier.
+
+Assessment is considered only after complete built-in inspection. Count/character/collection limits and incomplete inspection remain final. Input is limited to 4,096 nonempty segments and 160,000 UTF-16 characters across those segments, with a 30-second assessment deadline within the read's own deadline. No excerpt, first finding, or shortened preview can stand in for the complete material. An invalid response, exception, timeout, cancellation, or uncertain/injection decision cannot authorize withheld content. Additional guards remain restrictive and run independently.
+
+Only an exact `source_content` result can classify apparent findings as `benign_mention`; original hashes and severity are retained for audit, active pattern codes are cleared, and assurance stays low. The document remains `trust: "untrusted"` and `tainted: true`. The host must validate its classifier output and test it against adversarial material; configuring an assessor delegates this semantic judgment to that trusted component. It does not authorize execution of document instructions.
+
+If visible HTML extraction is insufficient, complete semantic authorization also permits the ordinary selector/Markdown formatter to read reviewed reference material from the same HTTP response. No JavaScript is executed and scripts remain excluded. `security.limitations` then records that the result may include hidden text. Without successful assessment the default hidden-text exclusion and extraction error remain unchanged. Returned `maxCharacters` limits still apply.
 
 `CONTENT_INSUFFICIENT` may set `reasonCode` to `INSUFFICIENT_TEXT` or `DYNAMIC_RENDERING_REQUIRED`. Browser fallback in `auto` mode runs only for HTML or XHTML after a completed guard when one of those two reasons is present. Markdown, plain text, XML, `GUARD_DENIED`, and `GUARD_FAILED` do not start that fallback.
 

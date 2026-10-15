@@ -31,6 +31,7 @@ export { isPublicIpAddress, resolveSafeOutboundUrl } from "./retrieval/outbound-
 export type { AddressResolver, ResolvedAddress } from "./retrieval/outbound-policy.js";
 export { createBuiltinContextGuard } from "./security/context-guard.js";
 export type { BuiltinContextGuard, BuiltinContextGuardOptions } from "./security/context-guard.js";
+export type { GuardReviewInput, GuardReviewDecision } from "./security/context-guard.js";
 export type {
   ContentGuard,
   GuardDecision,
