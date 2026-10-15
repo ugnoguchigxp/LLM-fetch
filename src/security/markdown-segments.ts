@@ -17,7 +17,10 @@ function rethrowInspectionPreparation(error: unknown): never {
   );
 }
 
-export function prepareMarkdownInspection(rawText: string): MarkdownInspectionMaterial {
+export function prepareMarkdownInspection(
+  rawText: string,
+  maxCharacters?: number,
+): MarkdownInspectionMaterial {
   const visibleText = normalizeMarkdownText(rawText);
   if (!visibleText.includes("<")) {
     return { visibleText, additionalSegments: [], omittedSegments: 0 };
@@ -26,7 +29,10 @@ export function prepareMarkdownInspection(rawText: string): MarkdownInspectionMa
   let projected = "";
   try {
     const $ = loadHtml(visibleText);
-    prepared = prepareHtmlForExtraction($, visibleText, { inspectAllAttributes: true });
+    prepared = prepareHtmlForExtraction($, visibleText, {
+      inspectAllAttributes: true,
+      ...(maxCharacters === undefined ? {} : { maxCharacters }),
+    });
     projected = $("body").text();
   } catch (error) {
     rethrowInspectionPreparation(error);

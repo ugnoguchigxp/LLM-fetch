@@ -83,7 +83,7 @@ for (const hit of selected) {
 await web.close();
 ```
 
-`guardReasonCodes`でガード拒否とHTTPや文字コードの失敗を分けます。`error.guardDiagnostics`はホスト向けの数値で、モデルへ渡さないでください。`require_approval`はライブラリ内では解除できません。
+`guardReasonCodes`でガード拒否とHTTPや文字コードの失敗を分けます。`error.guardDiagnostics`はホスト向けの数値で、モデルへ渡さないでください。既定では拒否判定を解除しません。明示的に設定した意味判定器による全文判定は利用できますが、検査の欠落は解除できません。[判定契約](./docs/API.md#optional-semantic-assessment)を参照してください。
 
 | API | 用途 |
 | --- | --- |
@@ -245,6 +245,8 @@ OpenAI SDKとAWS SDKは不要です。ツール定義は通常のJSONとして�
 ## Context Guardで行う検査
 
 取得した文書は、検出結果が0件でも`trust: "untrusted"`、`tainted: true`になります。内蔵Context Guardは無効化できません。
+
+`contextGuard.review`を明示的に設定すると、全文検査済みの参考資料に含まれる説明・手順と、受け手への攻撃命令を、ホストが用意した独立した意味判定器で区別できます。資料は未信頼データとして渡し、ライブラリはモデル選択や実行ツールの権限を与えません。検査の欠落、判定失敗・不明、追加Guardの拒否では許可しません。可視本文が不足する場合は、全文の意味判定で許可された同じ応答の非表示参考資料も抽出でき、その旨をsecurity limitationsへ残します。ホスト側の出力検証と攻撃例による試験が必要です。[判定契約](./docs/API.md#optional-semantic-assessment)を参照してください。
 
 検査では、可視本文、非表示内容、HTMLコメント、メタデータ、template、信頼度の低い属性を分けます。Markdown本文はそのまま検査し、`<`が含まれる場合はHTML投影も追加して隠れた命令を見逃さないようにします。文字数予算に収まる選択済みsegmentは全文を検査します。収まらないsegmentだけ先頭と末尾を検査し、欠落があれば必ず安全側へ倒します。内蔵Guardは安定した`reasonCodes`と、数値だけの`diagnostics`を返します。HTTP charset、BOM、HTML metaはclientと単独Guardで同じdecoderを使い、BOMを優先します。未対応または不正な文字コードは`UNSUPPORTED_CONTENT_ENCODING`になります。
 

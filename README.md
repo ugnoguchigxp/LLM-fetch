@@ -84,7 +84,7 @@ for (const hit of selected) {
 await web.close();
 ```
 
-Use `guardReasonCodes` to tell a guard refusal apart from an HTTP or encoding failure. `error.guardDiagnostics` is host-only numeric metadata; do not forward it to a model. `require_approval` is not cleared inside the library.
+Use `guardReasonCodes` to tell a guard refusal apart from an HTTP or encoding failure. `error.guardDiagnostics` is host-only numeric metadata; do not forward it to a model. A withheld result is final by default. An explicitly configured trusted semantic assessor can classify complete inspected reference material; inspection shortfalls cannot be cleared. See [semantic assessment](./docs/API.md#optional-semantic-assessment).
 
 | API | Purpose |
 | --- | --- |
@@ -246,6 +246,8 @@ Every lower-level `SearchHit` and `searchAndRead().hits` entry is marked `trust:
 ## Context Guard
 
 Every retrieved document is marked `trust: "untrusted"` and `tainted: true`, including documents with no findings. The built-in guard cannot be disabled.
+
+Hosts can opt into `contextGuard.review` to distinguish apparent instructions in complete reference material from injection attempts. This trusted, isolated classifier receives all inspected material as untrusted data; the library selects no model and grants no execution tools. Limits, failed/uncertain assessment, and additional guard restrictions fail closed. A successful full assessment can also authorize reading hidden reference material from the same response when visible extraction is insufficient; security limitations record that mode. Hosts must validate classifier output and test adversarial cases. See [the assessment contract](./docs/API.md#optional-semantic-assessment).
 
 The guard separates visible text, hidden content, comments, metadata, templates, and low-trust attributes. Markdown is scanned as text, and any `<` also opens an additional HTML projection so hidden markup is not skipped. It performs bounded normalization of Unicode, zero-width characters, URL/hex escapes, Base64, delimiter splitting, and leetspeak. When the selected text fits in the character budget, each selected segment is scanned in full. A segment that still exceeds its share keeps a head and tail sample. Any omitted segment or character range fails closed. Built-in results include stable `reasonCodes` and bounded numeric `diagnostics`. HTTP charset, BOM, and HTML metadata use one decoder in both the client and standalone guard, with BOM taking precedence. Unsupported or invalid encodings return `UNSUPPORTED_CONTENT_ENCODING`.
 

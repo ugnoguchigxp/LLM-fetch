@@ -25,7 +25,11 @@ import {
 } from "./retrieval/content-retriever.js";
 import { createSafeHttpFetcher } from "./retrieval/http-fetcher.js";
 import { normalizeResultUrl } from "./retrieval/url-normalizer.js";
-import { createInternalBuiltinContextGuard, runAdditionalGuard } from "./security/context-guard.js";
+import {
+  createInternalBuiltinContextGuard,
+  runAdditionalGuard,
+  wasSemanticallyReviewed,
+} from "./security/context-guard.js";
 import { markAdditionalGuardRestriction, mergeGuardResults } from "./security/merge-decisions.js";
 import { MAX_COLLECTED_SEGMENTS, type ContentSegment } from "./security/html-segments.js";
 import { prepareJsonInspection } from "./security/json-segments.js";
@@ -205,12 +209,21 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
   async function inspectSearchResults(hits: SearchHit[], query: string) {
     const inspected = await Promise.all(
       hits.map(async (hit) => {
-        const builtinResult = builtinGuard.inspectPrepared({
-          visibleText: `${hit.provider}\n${hit.title}\n${hit.snippet}\n${hit.url}\n${hit.displayUrl ?? ""}`,
-          structuralLines: true,
-          requestedUse: "answer_with_citation",
-          stage: "search_result",
-        });
+        const builtinResult = await builtinGuard.inspectPreparedReviewed(
+          {
+            visibleText: `${hit.provider}\n${hit.title}\n${hit.snippet}\n${hit.url}\n${hit.displayUrl ?? ""}`,
+            structuralLines: true,
+            requestedUse: "answer_with_citation",
+            stage: "search_result",
+          },
+          {
+            kind: "search_result",
+            trust: "untrusted",
+            url: hit.url,
+            provider: hit.provider,
+            query,
+          },
+        );
         let result = builtinResult;
         if (additionalGuard) {
           const source: SourceMetadata = {
@@ -391,23 +404,33 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
       });
     }
 
-    const referenceResult = builtinGuard.inspectPrepared({
-      visibleText: "",
-      additionalSegments: referenceSegments,
-      requestedUse,
-      stage: "reference",
-    });
+    const referenceResult = await builtinGuard.inspectPreparedReviewed(
+      {
+        visibleText: "",
+        additionalSegments: referenceSegments,
+        requestedUse,
+        stage: "reference",
+      },
+      source,
+      input.signal,
+    );
     throwIfDeadlineElapsed(deadline);
     const prepared = prepareRetrievedBody({
       contentType: fetched.contentType,
       decoded,
       finalUrl: fetched.finalUrl,
       fetchMethod: fetched.fetchMethod,
+      ...(options.contextGuard?.maxCharacters === undefined
+        ? {}
+        : { guardMaxCharacters: options.contextGuard.maxCharacters }),
       ...(input.maxCharacters === undefined ? {} : { maxCharacters: input.maxCharacters }),
     });
     throwIfDeadlineElapsed(deadline);
     const originalMaterial = fetched.originalResponse
-      ? prepareJsonInspection(decodeBody(fetched.originalResponse.body, "application/json"))
+      ? prepareJsonInspection(
+          decodeBody(fetched.originalResponse.body, "application/json"),
+          options.contextGuard?.maxCharacters,
+        )
       : undefined;
     const inspectionSegments = [
       ...prepared.additionalSegments,
@@ -416,17 +439,22 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     const collectionOverflow = originalMaterial
       ? Math.max(0, inspectionSegments.length - MAX_COLLECTED_SEGMENTS)
       : 0;
-    const contentResult = builtinGuard.inspectPrepared({
-      visibleText: prepared.visibleText,
-      structuralLines: prepared.structuralLines ?? false,
-      additionalSegments: collectionOverflow
-        ? inspectionSegments.slice(0, MAX_COLLECTED_SEGMENTS)
-        : inspectionSegments,
-      omittedSegments:
-        prepared.omittedSegments + (originalMaterial?.omittedSegments ?? 0) + collectionOverflow,
-      requestedUse,
-      stage: "content",
-    });
+    const contentResult = await builtinGuard.inspectPreparedReviewed(
+      {
+        visibleText: prepared.visibleText,
+        structuralLines: prepared.structuralLines ?? false,
+        additionalSegments: collectionOverflow
+          ? inspectionSegments.slice(0, MAX_COLLECTED_SEGMENTS)
+          : inspectionSegments,
+        omittedSegments:
+          prepared.omittedSegments + (originalMaterial?.omittedSegments ?? 0) + collectionOverflow,
+        requestedUse,
+        stage: "content",
+        reviewForExtraction: !!prepared.pendingError && !!prepared.extractReviewed,
+      },
+      source,
+      input.signal,
+    );
     throwIfDeadlineElapsed(deadline);
 
     let builtinResult = mergeGuardResults([referenceResult, contentResult]);
@@ -460,8 +488,12 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
         },
       );
     }
-    if (prepared.pendingError) throw prepared.pendingError;
-    const extracted = prepared.extracted ?? prepared.extract?.();
+    const reviewedExtraction =
+      prepared.pendingError && wasSemanticallyReviewed(contentResult)
+        ? prepared.extractReviewed?.()
+        : undefined;
+    if (prepared.pendingError && !reviewedExtraction) throw prepared.pendingError;
+    const extracted = reviewedExtraction ?? prepared.extracted ?? prepared.extract?.();
     input.signal?.throwIfAborted();
     throwIfDeadlineElapsed(deadline);
     if (!extracted) {
@@ -472,7 +504,17 @@ export function createLlmFetch(options: LlmFetchOptions): LlmFetchClient {
     }
 
     const transportLimitations = fetched.limitations ?? [];
-    const limitations = [...new Set([...guardResult.limitations, ...transportLimitations])];
+    const limitations = [
+      ...new Set([
+        ...guardResult.limitations,
+        ...transportLimitations,
+        ...(reviewedExtraction
+          ? [
+              "Visible extraction was insufficient; reviewed reference material may include hidden text.",
+            ]
+          : []),
+      ]),
+    ];
     const assurance =
       fetched.fetchMethod === "playwright" && guardResult.assurance === "high"
         ? "medium"

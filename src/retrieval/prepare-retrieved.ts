@@ -25,6 +25,8 @@ export interface PreparedRetrievedBody {
   omittedSegments: number;
   extracted?: ExtractedContent;
   extract?: () => ExtractedContent;
+  /** Complete semantic approval is required before reading excluded reference material. */
+  extractReviewed?: () => ExtractedContent;
   pendingError?: LlmFetchError;
 }
 
@@ -72,6 +74,7 @@ function htmlBody(
   finalUrl: string,
   maxCharacters: number | undefined,
   fetchMethod: "http" | "playwright",
+  guardMaxCharacters: number | undefined,
 ): PreparedRetrievedBody {
   let $;
   try {
@@ -80,7 +83,9 @@ function htmlBody(
     inspectionFailure(error);
   }
   const likelyDynamic = fetchMethod === "http" && isLikelyDynamicHtml($, decoded);
-  const prepared = prepareHtmlForExtraction($, decoded);
+  const prepared = prepareHtmlForExtraction($, decoded, {
+    ...(guardMaxCharacters === undefined ? {} : { maxCharacters: guardMaxCharacters }),
+  });
   const preExtractionVisible = $("body").text();
   try {
     const selected = selectHtmlContent($, finalUrl);
@@ -133,6 +138,20 @@ function htmlBody(
       additionalSegments: prepared.segments,
       omittedSegments: prepared.omittedSegments,
       pendingError,
+      extractReviewed: () => {
+        const reviewed = loadHtml(decoded);
+        reviewed("script, style, noscript, template, svg, iframe, object, embed").remove();
+        const selected = selectHtmlContent(reviewed, finalUrl);
+        const markdown = htmlToMarkdown(selected.element, finalUrl);
+        const limited = limitMarkdownReturn(markdown, maxCharacters ?? 20_000);
+        return {
+          title: selected.title,
+          text: limited.text,
+          characterCount: markdown.length,
+          truncated: limited.truncated,
+          excerpt: markdownExcerpt(limited.text),
+        };
+      },
     };
   }
 }
@@ -141,8 +160,9 @@ function markdownBody(
   decoded: string,
   finalUrl: string,
   maxCharacters: number | undefined,
+  guardMaxCharacters: number | undefined,
 ): PreparedRetrievedBody {
-  const material = prepareMarkdownInspection(decoded);
+  const material = prepareMarkdownInspection(decoded, guardMaxCharacters);
   const base = {
     visibleText: material.visibleText,
     structuralLines: true,
@@ -166,12 +186,24 @@ export function prepareRetrievedBody(input: {
   finalUrl: string;
   maxCharacters?: number;
   fetchMethod: "http" | "playwright";
+  guardMaxCharacters?: number;
 }): PreparedRetrievedBody {
   if (input.contentType === "text/html" || input.contentType === "application/xhtml+xml") {
-    return htmlBody(input.decoded, input.finalUrl, input.maxCharacters, input.fetchMethod);
+    return htmlBody(
+      input.decoded,
+      input.finalUrl,
+      input.maxCharacters,
+      input.fetchMethod,
+      input.guardMaxCharacters,
+    );
   }
   if (input.contentType === "text/markdown") {
-    return markdownBody(input.decoded, input.finalUrl, input.maxCharacters);
+    return markdownBody(
+      input.decoded,
+      input.finalUrl,
+      input.maxCharacters,
+      input.guardMaxCharacters,
+    );
   }
   if (input.contentType === "application/xml" || input.contentType === "text/xml") {
     let visible = "";

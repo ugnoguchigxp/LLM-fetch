@@ -25,3 +25,12 @@ Measured formatted character counts (without return truncation):
 | NPB result list     |    125 |    215 | Keep both records |
 
 Navigation omission follows the explicit HTML/ARIA contract (`nav` or `role="navigation"`). Unmarked link-only lists and cards keep their text without unnecessary URLs. This retains record values without guessing intent from sports words, numbers, domains or class/id names. The formatter correction increases daily/hourly output from 1,026/3,480 to 2,928/5,558 characters, still within their acceptance limits, while source hashes and guard material hashes remain identical.
+
+## Inspection baseline update (2026-10-16)
+
+The inspection hashes include title text as metadata, including when visible
+selection fails and reviewed hidden content is recovered. Before updating the
+hashes, all five fixtures were compared with the previous hashes after removing
+only that newly added title segment; every previous inspection hash matched.
+The saved HTML, visible text, existing segments, omitted counts and output-size
+baselines remain unchanged.
