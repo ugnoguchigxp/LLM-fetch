@@ -1,0 +1,26 @@
+{
+  "name": "llm-fetch-luna-eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "calibrate": "node --env-file-if-exists=../../.env --env-file-if-exists=.env calibrate.ts",
+    "build:library": "npm --prefix ../.. run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "eval": "node --env-file-if-exists=../../.env --env-file-if-exists=.env run.ts",
+    "list": "node run.ts --list",
+    "compare": "node compare.ts"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "0.163.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
