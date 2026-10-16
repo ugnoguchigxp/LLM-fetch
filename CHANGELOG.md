@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Versions follow Semantic Versioning; release tags use the matching `v<version>` form.
 
-## Unreleased
+## 0.1.4 - 2026-10-16
 
 - Inspect HTML title metadata in the shared collector before either visible extraction or reviewed hidden-material recovery, so an attack title cannot bypass the guard when visible selection fails.
 - Added opt-in, host-supplied semantic assessment of complete inspected reference material. The original request/reference detection is retained, including indirect cross-sentence requests. Without an assessor the built-in decision is final; incomplete inspection, failed/invalid assessment and additional-guard restrictions cannot be cleared. Assessment input and time are bounded and document content remains untrusted.
